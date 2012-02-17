@@ -1,0 +1,385 @@
+/*
+Firmware for arduino based Fast Charicter Braille Display(FCHAD)s.
+
+This is modal firmware.  The comunication sequence goes
+as follows.
+
+When the device is turned on it waits for a signal from the brltty driver.
+
+The brltty driver should identify itself by probing with the string "\nBRLTTY
+DRIVER - FCHAD?\n".
+
+The device shoud respond with the string "FCHAD\n" and information about the
+device in a form as follows:
+
+IDENTIFY MODE(MODE 0)
+DEVICE: 
+"""
+FCHAD\n
+CURSOR_DRIVER=driver name\n
+BRLTTY_DRIVER=driver name\n
+BUFFER_COLUMNS_MAX=###\n
+BUFFER_ROWS_MAX=###\n
+BUFFER_COLUMNS=###\n
+BUFFER_ROWS=###\n
+DOTCOUNT=###\n
+END_HEADER\n
+"""
+The brltty driver then responds by setting any settings we wish to set, and
+exiting the mode.
+DRIVER:
+"""
+CURSOR_DRIVER=driver name\n
+BRLTTY_DRIVER=driver name\n
+BUFFER_COLUMNS=###\n
+BUFFER_ROWS=###\n
+END_HEADER\n
+"""
+Now we will have to wait.  The brltty driver should read from the device untill
+something comes.  We are waiting for the cursor driver to start up.
+
+When the cursor driver starts up, it will send the device a string 
+"\nCURSOR DRIVER - FCHAD?\n".  Then the device will print to the serial
+"WAIT 300\n".  The brltty driver should wait 300ms, or however long is specified
+by the device.
+
+During this time, the same initialization sequence as before will take place
+between the cursor driver and the FCHAD device.
+
+When the brltty driver is done waiting, it should again read from the serial.  
+The FCHAD will again identify itself, and the brltty driver should update any
+information internally which has changed externally.
+
+When the brltty driver again recieves from the FCHAD the "END_HEADER\n"
+statement, both the brltty driver and the FCHAD enter into idle mode.
+
+IDLE MODE(MODE 1)
+During idle mode, the FCHAD is reading from the serial, and receiving
+commands from both the brltty driver and the cursor driver.  The brltty driver
+receives information from the FCHAD regarding key presses(this information will
+be passed on from the cursor driver).  And the cursor driver only ever sends
+commands to the FCHAD, it never receives any.
+
+COMMUNICATIONS DIAGRAM:
+
+        FCHAD BRAILLE DEVICE
+           /          \
+          /            \
+BRLTTY_DRIVER          CURSOR_DRIVER
+
+The drivers may send the following single byte commands to the device:
+
+BYTE   COMMAND
+2      Enter read buffer mode -- Sent from the brltty driver
+3      Set the cursor possition in the buffer -- Sent from the cursor driver
+4      Send possition -- Sent from the brltty driver
+5      Key stroke -- Sent from the cursor driver
+6      Sleep -- Don't display any charicter
+
+SET CURSOR POSSITION
+Set cursor possition in the display.  This sets which character is being
+displayed by the FCHAD.  The first two bytes after the 2 make the x possition.
+The seccond two bytes make the y possition.
+
+SEND POSSITION
+Same format as set cursor possition, except this time the FCHAD is sending to
+the brltty driver rather than receiving from the cursor driver.
+
+KEY STROKE
+Next four bytes received by the FCHAD are echoed back.  This allows the cursor
+driver to send key strokes to the brltty driver. I know that it seems like an
+odd way for two programs to comunicate(cursor driver, and brltty driver)
+, but if/when the cursor device and the FCHAD device are one in the same it
+makes perfect sense.
+
+READ BUFFER MODE(MODE 2)
+The FCHAD reads a NULL escaped array of braille bytes into the display buffer.
+
+BRAILLE BYTE
+Standard braille dot numbering:
+14
+25
+36
+78
+In a braille byte the bits 0-7 correspond to braille dots 1-8.
+03
+14
+25
+67
+
+BRAILLE BYTE STRING
+Every value other than 0 corresponds to a braille byte value.  0 marks an escape
+sequence.
+
+ESCAPE SEQUENCES:
+00  0
+01  End of row.(For use in multi row buffers.)
+02  End of buffer.
+
+If an edge of the buffer is hit.  The firmware will spit out:
+"ERROR END OF BUFFER REACHED"
+*/
+
+#define CURSOR_DRIVER     0
+#define BRLTTY_DRIVER     1
+#define BUFFER_SIZE_MAX   2
+#define BUFFER_COLUMNS    3
+#define BUFFER_ROWS       4
+#define DOTCOUNT          5
+#define NumberOfSettings  6
+
+String settings[]={
+"CURSOR_DRIVER"
+"BRLTTY_DRIVER"
+"BUFFER_SIZE_MAX"
+"BUFFER_COLUMNS"
+"BUFFER_ROWS"
+"DOTCOUNT"};
+
+#define dotCount 6
+const int dotPins[] = {13,11,9,7,5,3};
+
+#define buffer_size_max 800
+byte buffer[0][0];  //The buffer of braile bytes to be displayed.
+int  buffer_columns=0;
+int  buffer_rows=0;
+int x=0;
+int y=0;
+
+String cursor_driver;
+String brltty_driver;
+
+#define lineBufferLength 40 
+char current_line[lineBufferLength];
+byte charicter;
+
+//////////////////////////////////////////
+///Standard functions/////////////////////
+//////////////////////////////////////////
+byte stringeq(char* string1, char* string2, char eol, byte length)
+{
+    byte i;
+    for(i=0; i < length; i++)
+    {
+        if(string1[i]==eol&&string2[i]==eol)return i;
+        if(string1[i]!=string2[i])return 0;
+    }
+    return i;
+}
+
+byte nextChar()
+{
+  while(!Serial.available());//Block untill next char is here.
+  return Serial.read();
+}
+
+byte nextLine()
+{
+    return Serial.readBytesUntil('\n', current_line, lineBufferLength);
+}
+
+void waitFor(char * line)
+{
+    while(!stringeq(current_line ,line,'\n',lineBufferLength))
+        nextLine();
+}
+
+//////////////////////////////////////////
+///Display functions//////////////////////
+//////////////////////////////////////////
+
+void displayChar(byte charicter)
+{
+  for(int n = 0;n<dotCount;n++)
+  {
+   if((1 << n) & charicter)
+   {
+     digitalWrite(dotPins[n],HIGH);
+   }else
+   {
+     digitalWrite(dotPins[n+8],LOW);
+   }
+  }  
+}
+
+boolean in_buffer()
+    return (x<buffer_columns&&y<buffer_rows);
+
+
+///////////////////////////////////////////
+///Modes///////////////////////////////////
+///////////////////////////////////////////
+
+
+///////////////////////////////////////////
+///Identify mode///////////////////////////
+///////////////////////////////////////////
+void identify_mode_send_settings(){
+  Serial.println("FCHAD");
+  Serial.println(String(settings[CURSOR_DRIVER]+"="+cursor_driver));
+  Serial.println(String(settings[BRLTTY_DRIVER]+"="+brltty_driver));
+  Serial.println(String(settings[BUFFER_SIZE_MAX]+"="+
+                                    String(buffer_size_max,DEC)));
+  Serial.println(String(settings[BUFFER_COLUMNS]+"="+
+                                    String(buffer_columns,DEC)));
+  Serial.println(String(settings[BUFFER_ROWS]+"="+
+                                    String(buffer_rows,DEC)));
+  Serial.println(String(settings[DOTCOUNT]+"="+
+                                    String(dotCount,DEC)));
+  Serial.println("END_HEADER");
+}
+
+byte identify_mode_which_setting(){
+    byte index;
+    for(byte i=0;i<NumberOfSettings;i++){
+        index=identify_mode_compair_till('=');
+        if(index)
+            return index;
+    }
+    return 0;
+}
+
+void identify_mode_receive_settings(){
+    byte index;
+    while(true){
+        nextLine();
+        index = identify_mode_which_setting();
+        switch(charicter){
+            case CURSOR_DRIVER:  cursor_driver=String(&current_line[index]);
+            case BRLTTY_DRIVER:  brltty_driver=String(&current_line[index]);
+            case BUFFER_COLUMNS: buffer_columns=int(&current_line[index]);
+            case BUFFER_ROWS:    buffer_rows=int(&current_line[index]);
+            default:
+                return;
+        }
+    }
+}
+
+void identify_mode_cleanup(){
+    free(settings);
+    free(brltty_driver);
+    free(cursor_driver);
+    free(current_line);
+}
+
+void identify_mode(){
+    waitFor("BRLTTY DRIVER - FCHAD?");
+    identify_mode_send_settings();
+    identify_mode_receive_settings();
+    waitFor("BRLTTY DRIVER - FCHAD?");
+    identify_mode_send_settings();
+    identify_mode_receive_settings();
+    identify_mode_cleanup();
+    buffer=malloc(buffer_collumns*buffer_rows);
+}
+
+////////////////////////////////////////////
+///Idle mode////////////////////////////////
+////////////////////////////////////////////
+void idle_mode_next(){
+   charicter = nextChar();
+   switch(charicter){
+      case  2:read_buffer_mode();
+      case  3:set_cursor_pos();
+      case  4:send_cursor_pos();
+      case  5:receive_key();
+      case  6:displayChar(0);//Sleep
+  }
+}
+
+///////////////////////////////////////////
+///READ BUFFER MODE////////////////////////
+///////////////////////////////////////////
+void read_buffer_clear_eol()
+{
+    x++;
+    while(in_buffer())
+    {
+        buffer[x][y]=0;
+        x++;
+    }
+}
+
+void read_buffer_clear_eob()
+{
+    while(in_buffer())
+    {
+        read_buffer_clear_eol();
+        y++;
+        x=0;
+    }
+}
+
+void read_buffer_die(String message)
+    Serial.println(message);
+
+
+void read_buffer_mode(){
+  while(true)
+  {
+    charicter = nextChar();
+    if(charicter==0)
+    {
+      charicter=nextChar();
+      switch(charicter){
+        case 0: //0
+        case 1: //EOL
+            read_buffer_clear_eol();
+            x=0;
+            y++;
+            if(!in_buffer()){
+                read_buffer_die("ERROR END OF BUFFER REACHED")                
+                return;
+            }
+        case 2: //EOB
+            read_buffer_clear_eob(x,y);
+            return;
+      }
+      x++;
+      if(!in_buffer())
+          return read_buffer_die("ERROR END OF BUFFER REACHED");
+      buffer[x][y]=charicter;
+  }
+}
+
+//////////////////////////////////////////////
+////Mini Modes////////////////////////////////
+//////////////////////////////////////////////
+void set_cursor_pos(){
+    x=Serial.read()*255+Serial.read();
+    y=Serial.read()*255+Serial.read();
+    if(in_buffer())
+        displayChar(buffer[x][y]);
+    else{x=0;y=0;
+        Serial.println("CURSOR ROUTED TO INVALID REGION WITHIN BUFFER.");
+    }
+}
+
+void send_cursor_pos(){
+    Serial.write(x,2);
+    Serial.write(y,2);
+}
+
+void receive_key(){
+    Serial.write(Serial.read());
+    Serial.write(Serial.read());
+}
+
+//////////////////////////////////////////////
+////Standard initializers/////////////////////
+//////////////////////////////////////////////
+void setup()
+{
+  // initialize the serial communication:
+  Serial.begin(9600);
+  // initialize the the pins as outputs:
+  for(int n = 0;n<dotCount;n++)
+  {
+    pinMode(dotPins[n], OUTPUT);
+  }
+  identify_mode();
+}
+
+void loop() {
+    idle_mode_next();
+}

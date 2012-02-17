@@ -1,0 +1,61 @@
+There is an inconsistency between actual behavior and the arduino documentation.
+http://arduino.cc/en/Reference/StringConstructor
+http://arduino.cc/en/Serial/Print
+
+According to the documentation, a String can be initialized using a constant
+in the form of "some text here".  However this fails to add a null terminator to
+the end of the String.  As such this code does not work:
+
+String settings[]={
+"CURSOR_DRIVER"
+"BRLTTY_DRIVER"
+"BUFFER_SIZE_MAX"
+"BUFFER_COLUMNS"
+"BUFFER_ROWS"
+"DOTCOUNT"};
+
+void setup() {
+  Serial.begin(9600);
+  Serial.println(settings[0]);
+}
+
+void loop() {
+  // put your main code here, to run repeatedly: 
+  
+}
+While this code does.
+
+String settings[]={
+"CURSOR_DRIVER\0"
+"BRLTTY_DRIVER\0"
+"BUFFER_SIZE_MAX\0"
+"BUFFER_COLUMNS\0"
+"BUFFER_ROWS\0"
+"DOTCOUNT\0"};
+
+void setup() {
+  Serial.begin(9600);
+  Serial.println(settings[0]);
+}
+
+void loop() {
+  // put your main code here, to run repeatedly: 
+  
+}
+
+
+
+
+I must note, that this is really only a problem in documentation.
+The documentation for the print command clearly states that it works on any
+data type:
+
+http://arduino.cc/en/Serial/Print
+val: the value to print - any data type
+
+And yet in reality, it works on NULL terminated strings but not length bounded
+Strings....
+
+I am on Arch linux.
+
+Timothy Hobbs

@@ -1,0 +1,129 @@
+For arduino based Fast Charicter Braille Display(FCHAD)s.
+
+
+
+Arduino based FCHADs use a modal communications system to send messages between 
+the computer, display, and cursor devices.  The comunication sequence goes as
+follows.
+
+When the device is turned on it waits for a signal from the brltty driver.
+
+The brltty driver should identify itself by probing with the string "\nBRLTTY
+DRIVER - FCHAD?\n".
+
+The device shoud respond with the string "FCHAD\n" and information about the
+device in a form as follows:
+
+IDENTIFY MODE(MODE 0)
+DEVICE: 
+"""
+FCHAD\n
+CURSOR_DRIVER=driver name\n
+BRLTTY_DRIVER=driver name\n
+BUFFER_COLUMNS_MAX=###\n
+BUFFER_ROWS_MAX=###\n
+BUFFER_COLUMNS=###\n
+BUFFER_ROWS=###\n
+DOTCOUNT=###\n
+END_HEADER\n
+"""
+The brltty driver then responds by again identifying and setting any settings we wish to set, and
+exiting the mode.
+DRIVER:
+"""
+BRLTTY DRIVER\n
+CURSOR_DRIVER=driver name\n
+BRLTTY_DRIVER=driver name\n
+BUFFER_COLUMNS=###\n
+BUFFER_ROWS=###\n
+END_HEADER\n
+"""
+Now we will have to wait.  The brltty driver should read from the device untill
+something comes.  We are waiting for the cursor driver to start up.
+
+When the cursor driver starts up, it will send the device a string 
+"\nCURSOR DRIVER - FCHAD?\n".  Then the device will print to the serial
+"WAIT 300\n".  The brltty driver should wait 300ms, or however long is specified
+by the device.
+
+During this time, the same initialization sequence as before will take place
+between the cursor driver and the FCHAD device.
+
+When the brltty driver is done waiting, it should again read from the serial.  
+The FCHAD will again identify itself, and the brltty driver should update any
+information internally which has changed externally.
+
+When the brltty driver again recieves from the FCHAD the "END_HEADER\n"
+statement, both the brltty driver and the FCHAD enter into idle mode.
+
+IDLE MODE(MODE 1)
+During idle mode, the FCHAD is reading from the serial, and receiving
+commands from both the brltty driver and the cursor driver.  The brltty driver
+receives information from the FCHAD regarding key presses(this information will
+be passed on from the cursor driver).  And the cursor driver only ever sends
+commands to the FCHAD, it never receives any.
+
+COMMUNICATIONS DIAGRAM:
+
+        FCHAD BRAILLE DEVICE
+           /          \
+          /            \
+BRLTTY_DRIVER          CURSOR_DRIVER
+
+The drivers may send the following single byte commands to the device:
+
+BYTE   COMMAND
+2      Enter read buffer mode -- Sent from the brltty driver
+3      Set the cursor possition in the buffer -- Sent from the cursor driver
+4      Send possition -- Sent from the brltty driver
+5      Key stroke -- Sent from the cursor driver
+6      Sleep -- Don't display any charicter
+
+SET CURSOR POSSITION
+Set cursor possition in the display.  This sets which character is being
+displayed by the FCHAD.  The first two bytes after the 2 make the x possition.
+The seccond two bytes make the y possition.
+
+SEND POSSITION
+Same format as set cursor possition, except this time the FCHAD is sending to
+the brltty driver rather than receiving from the cursor driver.
+
+KEY STROKE
+Next four bytes received by the FCHAD are echoed back.  This allows the cursor
+driver to send key strokes to the brltty driver. I know that it seems like an
+odd way for two programs to comunicate(cursor driver, and brltty driver)
+, but if/when the cursor device and the FCHAD device are one in the same it
+makes perfect sense.
+
+READ BUFFER MODE(MODE 2)
+The FCHAD reads a NULL escaped array of braille bytes into the display buffer.
+
+BRAILLE BYTE
+Standard braille dot numbering:
+14
+25
+36
+78
+In a braille byte the bits 0-7 correspond to braille dots 1-8.
+03
+14
+25
+67
+
+BRAILLE BYTE STRING
+Every value other than 0 corresponds to a braille byte value.  0 marks an escape
+sequence.
+
+ESCAPE SEQUENCES:
+00  0
+01  End of row.(For use in multi row buffers.)
+02  End of buffer.
+
+After the End of buffer escape sequence is sent.  The brltty driver should send
+a 4 byte check sum which equals the sum of the bytes in the buffer.  If this
+check sum fails(which it may if the interaction is interupted by the cursor
+driver) the FCHAD will respond with 0.
+
+If an edge of the buffer is hit.  The firmware will spit out:
+"ERROR END OF BUFFER REACHED"
+
