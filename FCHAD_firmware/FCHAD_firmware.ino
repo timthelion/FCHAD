@@ -222,6 +222,7 @@ void identify_mode(){
     identify_mode_send_settings();
     identify_mode_receive_settings("CURSOR DRIVER");
     delay(serialWaitTime);
+    identify_mode_send_settings();
     identify_mode_cleanup();
   }
 
