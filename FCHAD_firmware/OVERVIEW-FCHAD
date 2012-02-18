@@ -4,8 +4,10 @@ What parts make up the whole?
 FCHAD: The arduino device that controlls 6-9 LED lights, motors, solenoids, ect.
 Which are able to update which braille character they are displaying at faster
 than 12 charicters per seccond.
+
 CURSOR: The user controlled cursor, which selects which character will be
 displayed by the FCHAD.
+
 BRLTTY: The program which sends text from the computer to the FCHAD for display.
 
 Arduino based FCHADs use a modal communications system to send messages between 
@@ -54,7 +56,8 @@ When the cursor driver starts up, it will send the device a string
 by the device.
 
 During this time, the same initialization sequence as before will take place
-between the cursor driver and the FCHAD device.
+between the cursor driver and the FCHAD device.  When this is done, the cursor
+driver will enter idle mode.
 
 When the brltty driver is done waiting, it should again read from the serial.  
 The FCHAD will again identify itself, and the brltty driver should update any

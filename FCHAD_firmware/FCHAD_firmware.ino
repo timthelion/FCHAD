@@ -8,7 +8,7 @@
  * material support in terms of office space and machinery used for soldering
  * and manufacture of electric components.
  *
- * BRLTTY comes with ABSOLUTELY NO WARRANTY.
+ * The FCHAD software comes with ABSOLUTELY NO WARRANTY.
  *
  * This is free software, placed under the terms of the
  * GNU General Public License, as published by the Free Software
@@ -100,7 +100,7 @@ void waitFor(char * line)
 }
 
 void writeInt(int x){
-    Serial.write( (uint8_t)x & 0xFF00 ) ;
+    Serial.write( (uint8_t)((x & 0xFF00) >> 8) ) ;
     Serial.write( (uint8_t)x & 0x00FF ) ;
 }
 
@@ -134,10 +134,10 @@ boolean in_buffer(){
 
 ///////////////////////////////////////////
 ///Identify mode///////////////////////////
-//////////////////////////////////////////
-/////TODO/////////////////////////////////
+///////////////////////////////////////////
+/////TODO//////////////////////////////////
 /////Add chech sums to identify mode///////
-//////////////////////////////////////////
+///////////////////////////////////////////
 void identify_mode_send_settings(){
   Serial.println("FCHAD");
   Serial.print(settings[CURSOR_DRIVER]);
@@ -191,7 +191,8 @@ void identify_mode_receive_settings(char * driver){
     while(true){
         nextLine();
         setting = identify_mode_which_setting();
-        //Serial.print("Setting:");Serial.print(setting);Serial.println(current_line);
+        //Serial.print("Setting:");Serial.print(setting);
+        //Serial.println(current_line);
         //Serial.print("Index:");Serial.println(charicter);
         switch(setting){
             case CURSOR_DRIVER:  cursor_driver=String(&current_line[charicter]);break;
@@ -293,7 +294,8 @@ void read_buffer_mode(){
             }
         case 2: //EOB
             read_buffer_clear_eob();
-            if(check_sum!=read_buffer_read_check_sum()){//when check sum fails try again.
+            if(check_sum!=read_buffer_read_check_sum()){
+            //when check sum fails try again.
               Serial.write(byte(0));
               read_buffer_mode();
             }
