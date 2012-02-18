@@ -195,10 +195,14 @@ void identify_mode_receive_settings(char * driver){
         //Serial.println(current_line);
         //Serial.print("Index:");Serial.println(charicter);
         switch(setting){
-            case CURSOR_DRIVER:  cursor_driver=String(&current_line[charicter]);break;
-            case BRLTTY_DRIVER:  brltty_driver=String(&current_line[charicter]);break;
-            case BUFFER_COLUMNS: buffer_columns=atoi(&current_line[charicter]);break;
-            case BUFFER_ROWS:    buffer_rows=atoi(&current_line[charicter]);break ;
+            case CURSOR_DRIVER:  cursor_driver=String(&current_line[charicter]);
+                                    break;
+            case BRLTTY_DRIVER:  brltty_driver=String(&current_line[charicter]);
+                                    break;
+            case BUFFER_COLUMNS: buffer_columns=atoi(&current_line[charicter]);
+                                    break;
+            case BUFFER_ROWS:    buffer_rows=atoi(&current_line[charicter]);
+                                    break;
             case END_HEADER:     return;break;
             case ERROR:         Serial.print("Unknown setting:");
                                 Serial.println(current_line);break;

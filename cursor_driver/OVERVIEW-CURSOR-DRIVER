@@ -8,9 +8,10 @@ Finally continue on to this document.
 IDENTIFY MODE
 !!TODO, add check sums to identify mode!!
 
-Cursor driver identifies itself to the FCHAD device by writting"CURSOR DRIVER -
-FCHAD?\n" to the serial.  The cursor driver then needs to wait several
-milliseconds while the FCHAD pauses communications with the BRLTTY driver.
+Cursor driver identifies itself to the FCHAD device by writting 
+"CURSOR DRIVER - FCHAD?\n" to the serial.  The cursor driver then needs 
+to wait several milliseconds while the FCHAD pauses communications with
+the BRLTTY driver.
 
 Then the FCHAD will respond with something like:
 
@@ -25,13 +26,12 @@ BUFFER_ROWS=###\n
 DOTCOUNT=###\n
 END_HEADER\n
 """
-
 The cursor driver will then write back:
+
 
 """
 CURSOR DRIVER\n
 CURSOR_DRIVER=driver name\n
-BRLTTY_DRIVER=driver name\n
 BUFFER_COLUMNS=###\n
 BUFFER_ROWS=###\n
 END_HEADER\n
