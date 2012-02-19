@@ -133,7 +133,7 @@ long readLong(){
 void displayChar(byte charicter)
 {
   #if DEBUG
-    Serial.print("Displaying charicter:");Serial.println(charicter);
+  Serial.print("Displaying charicter:");Serial.println(charicter);
   #endif  
   for(int n = 0;n<dotCount;n++)
   {
@@ -142,9 +142,9 @@ void displayChar(byte charicter)
      digitalWrite(dotPins[n],HIGH);
    }else
    {
-     digitalWrite(dotPins[n+8],LOW);
+     digitalWrite(dotPins[n],LOW);
    }
-  }  
+  }
 }
 
 boolean in_buffer(){
@@ -246,6 +246,7 @@ void identify_mode_cleanup(){
 }
 
 void identify_mode(){
+    Serial.println("FCHAD");
     waitFor("BRLTTY DRIVER - FCHAD?");
     identify_mode_send_settings();
     identify_mode_receive_settings("BRLTTY DRIVER");
@@ -263,9 +264,6 @@ void identify_mode(){
 ////////////////////////////////////////////
 void idle_mode_next(){
    charicter = nextChar();
-   #if DEBUG
-        Serial.print("Idle mode, handling char:");Serial.println(String(charicter));
-   #endif
    switch(charicter){
       case  2:read_buffer_mode();break;
       case  3:set_cursor_pos();break;

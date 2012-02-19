@@ -28,22 +28,25 @@ from serial import Serial
 from xlib_buffer_cursor import buffer_cursor
 
 class braille_reader_host:
-    def __init__(self,serial):
+    def __init__(self,serial,test,attack,dry,no_init):
         self._serial = serial
         self._cursorDriverName="pythonXlib"
-        self._test = "--test" in sys.argv
-        self._attack = "--attack" in sys.argv
-        self._dry = "--no-cursor" in sys.argv
+        self._test = test
+        self._attack = attack
+        self._dry = dry
+        self._no_init=no_init
+
         
         self._columns            = 100
         self._rows               = 1
 
-        if self._test or self._attack: self.serial_test_brltty_init()
-        self.serial_init()
-        if self._attack: self.serial_test_transfer_speed()
-
-        if self._test: self.serial_test_brltty_fill_buffer()
-        
+        if not self._no_init:
+            if self._test or self._attack: self.serial_test_brltty_init()
+            self.serial_init()
+            if self._attack: self.serial_test_transfer_speed()
+    
+            if self._test: self.serial_test_brltty_fill_buffer()
+            
         if not self._dry: 
             self._cursor = buffer_cursor(self,self._columns,self._rows)
     
@@ -123,16 +126,43 @@ class braille_reader_host:
 
 
 serial = Serial(sys.argv[1], 9600, timeout=1)
+test = "--test" in sys.argv
+attack = "--attack" in sys.argv
+dry = "--no-cursor" in sys.argv
+help = "--help" in sys.argv or "-h" in sys.argv
+no_init = "--no-init" in sys.argv
 
-
-pid = os.fork()
-if pid: 
-    serialLogFile = open('serialLogFile.log', 'w')
-    serialLogFile.write("Beginning of log file:\n")
-    while True: 
-        while not serial.inWaiting():1
-        char=serial.read()
-        sys.stdout.write(char)
-        serialLogFile.write(char)
-        
-else: brh = braille_reader_host(serial)
+if help:
+    m = """Cursor driver for controlling FCHAD type devices.
+    Options:
+    --test      To be used without brltty.  Prints many messages and fills the
+                FCHAD buffer with an array wich should activate each braille dot
+                individually.
+                
+    --attack    Test the speed of serial with FCHAD.  This is useless.
+    
+    --no-cursor Initiallizes comunications with the FCHAD, and does nothing else.
+                Does not take over X11 cursor.
+                
+    --no-init   Another option just for testing.  Do not go through initialization
+                sequence with device, just start sending set pos sequences...
+    """
+    print m
+else:
+    if test or attack or dry:
+        DEVICE_ID=serial.readline()
+        print "Device ID:"+DEVICE_ID
+        if not DEVICE_ID.startswith("FCHAD"):
+            print "Not an FCHAD device."
+            sys.exit()
+        pid = os.fork()
+        if pid: 
+            serialLogFile = open('serialLogFile.log', 'w')
+            serialLogFile.write("Beginning of log file:\n")
+            while True: 
+                while not serial.inWaiting():1
+                char=serial.read()
+                sys.stdout.write(char)
+                serialLogFile.write(char)                    
+        else: brh = braille_reader_host(serial, test, attack, dry, no_init)
+    else: brh = braille_reader_host(serial, test, attack, dry, no_init)
