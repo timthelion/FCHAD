@@ -293,9 +293,10 @@ void read_buffer_mode(){
             x=0;
             y++;
             if(!in_buffer()){
-                read_buffer_die("ERROR END OF BUFFER REACHED");
+                read_buffer_die("ERROR END OF BUFFER REACHED WHILE GOING TO NEXT LINE");
                 return;
             }
+            break;
         case 2: //EOB
             read_buffer_clear_eob();
             if(check_sum!=read_buffer_read_check_sum()){
@@ -304,11 +305,14 @@ void read_buffer_mode(){
               read_buffer_mode();
             }
             return;
+            break;
+        default:;
       }
     }
     x++;
     if(!in_buffer())
-        return read_buffer_die("ERROR END OF BUFFER REACHED");
+        return read_buffer_die("ERROR END OF BUFFER REACHED WHILE WRITTING TO BUFFER");
+                                
     buffer[x+y*buffer_columns]=charicter;
   }
 }
@@ -319,6 +323,9 @@ void read_buffer_mode(){
 void set_cursor_pos(){
     x=Serial.read()*256+Serial.read();
     y=Serial.read()*256+Serial.read();
+    Serial.print("CURSOR POSSITION SET TO:");Serial.print(String(x));
+                                             Serial.print(",");
+                                             Serial.println(String(y));
     if(in_buffer())
         displayChar(buffer[x+y*buffer_columns]);
     else{x=0;y=0;

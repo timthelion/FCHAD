@@ -50,9 +50,10 @@ class braille_reader_host:
 		self._serial.write("END_HEADER\n")
         
     def serial_test_brltty_fill_buffer(self):
-        self._serial.write(chr(3))
+        self._serial.write(chr(2))
         self._serial.write(chr(0))
-        for n in [0,1,2,3,4,5,6,7]:
+        self._serial.write(chr(0))
+        for n in [0,1,2,3,4,5,6]:
             self._serial.write(chr(2**n))
         self._serial.write(chr(0))
         self._serial.write(chr(2))
@@ -76,11 +77,12 @@ class braille_reader_host:
 
     def update(self, pos):# fix this code to make it work with
                           # possitions > 255
-         self._serial.write(chr(2))
+         self._serial.write(chr(3))
          self._serial.write(chr(0))
          self._serial.write(chr(pos))
          self._serial.write(chr(0))
-         self._serial.write(chr(pos))
+         self._serial.write(chr(0))
+         print "UPDATING CURSOR POSSITION"+str(pos)
 
     def __delete__(self):
         self._serial.close()
