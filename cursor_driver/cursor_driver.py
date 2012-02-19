@@ -25,23 +25,41 @@ import sys, os, time
 
 from serial import Serial
 
-from xlib_buffer_cursor import xlib_buffer_cursor
+from xlib_buffer_cursor import buffer_cursor
 
 class braille_reader_host:
     def __init__(self,serial):
         self._serial = serial
         self._cursorDriverName="pythonXlib"
-        test = sys.argv[2] == "--test"
+        self._test = "--test" in sys.argv
+        self._attack = "--attack" in sys.argv
+        self._dry = "--no-cursor" in sys.argv
         
         self._columns            = 100
         self._rows               = 1
 
-        if test: self.serial_test_brltty_init()
-        self.serial_FCHAD_init()
-        if test: self.serial_test_brltty_fill_buffer()
+        if self._test or self._attack: self.serial_test_brltty_init()
+        self.serial_init()
+        if self._attack: self.serial_test_transfer_speed()
+
+        if self._test: self.serial_test_brltty_fill_buffer()
         
-        self._cursor = xlib_buffer_cursor(self,self._columns,self._rows)
+        if not self._dry: 
+            self._cursor = buffer_cursor(self,self._columns,self._rows)
     
+    def serial_test_transfer_speed(self):
+        print "Attacking the FCHAD with serial overflow\n"
+        for t in range(10):
+            delay=1.0/(10*t+1.0)
+            print "Attacking every "+str(delay)+" seconds.\n"
+            for c in ['a','t','t','a','c','k',str(t)]:
+                time.sleep(delay)
+                self._serial.write(chr(5))
+                self._serial.write(chr(0))
+                self._serial.write(c)
+        print "Done with attack.\n"
+            
+            
     def serial_test_brltty_init(self):
         #We ignore the messages from the FCHAD device in this code.  It is meant
         #as a very quick informal test.
@@ -53,12 +71,28 @@ class braille_reader_host:
         self._serial.write(chr(2))
         self._serial.write(chr(0))
         self._serial.write(chr(0))
-        for n in [0,1,2,3,4,5,6]:
+        checksum = 0
+        for n in range(7):
             self._serial.write(chr(2**n))
+            checksum = checksum + 2**n
         self._serial.write(chr(0))
         self._serial.write(chr(2))
+        #write check sum
+        checksum_byte1=chr((checksum&0b11111111000000000000000000000000)>>24)
+        checksum_byte2=chr((checksum&0b00000000111111110000000000000000)>>16)
+        checksum_byte3=chr((checksum&0b00000000000000001111111100000000)>>8)
+        checksum_byte4=chr( checksum&0b00000000000000000000000011111111)
+        print "Writting checksum to serial:" + str(checksum) 
+        print "Byte 1:" + str(ord(checksum_byte1))
+        print "Byte 2:" + str(ord(checksum_byte2))
+        print "Byte 3:" + str(ord(checksum_byte3))
+        print "Byte 4:" + str(ord(checksum_byte4))
+        self._serial.write(checksum_byte1)
+        self._serial.write(checksum_byte2)
+        self._serial.write(checksum_byte3)
+        self._serial.write(checksum_byte4)
         
-    def serial_FCHAD_init(self):
+    def serial_init(self):
         self._serial.write("CURSOR DRIVER - FCHAD?\n")
         self._serial.write("CURSOR DRIVER\n")
         self._serial.write("CURSOR_DRIVER="+self._cursorDriverName+"\n")
@@ -82,7 +116,7 @@ class braille_reader_host:
          self._serial.write(chr(pos))
          self._serial.write(chr(0))
          self._serial.write(chr(0))
-         print "UPDATING CURSOR POSSITION"+str(pos)
+         if self._test: print "UPDATING CURSOR POSSITION"+str(pos)
 
     def __delete__(self):
         self._serial.close()
@@ -95,5 +129,10 @@ pid = os.fork()
 if pid: 
     serialLogFile = open('serialLogFile.log', 'w')
     serialLogFile.write("Beginning of log file:\n")
-    while True: serialLogFile.write(serial.read())
+    while True: 
+        while not serial.inWaiting():1
+        char=serial.read()
+        sys.stdout.write(char)
+        serialLogFile.write(char)
+        
 else: brh = braille_reader_host(serial)

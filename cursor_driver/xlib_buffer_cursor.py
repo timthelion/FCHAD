@@ -13,7 +13,7 @@ from time import sleep
 
 import math
 
-class xlib_buffer_cursor:
+class buffer_cursor:
     def __init__(self, host, columns, rows):
         self._display            = display.Display()
         self._screen             = self._display.screen()

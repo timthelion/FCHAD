@@ -19,6 +19,7 @@
  *
  * This software is maintained by Timothy Hobbs <timothyhobbs@seznam.cz>
  */
+#define DEBUG             1
 
 #define ERROR             0
 #define CURSOR_DRIVER     1
@@ -69,8 +70,10 @@ byte stringeq(char* string1, char* string2, char eol, byte length)
     for(i=0; i < length; i++)
     {
         if(string1[i]==eol&&string2[i]==eol)return i;
-        //Serial.print("string1[i]");Serial.println(string1[i]);
-        //Serial.print("string2[i]");Serial.println(string2[i]);
+        #if DEBUG >= 2
+        Serial.print("string1[i]");Serial.println(string1[i]);
+        Serial.print("string2[i]");Serial.println(string2[i]);
+        #endif
         if(string1[i]!=string2[i])return 0;
     }
     return i;
@@ -104,12 +107,34 @@ void writeInt(int x){
     Serial.write( (uint8_t)x & 0x00FF ) ;
 }
 
+int readInt(){
+    while(!Serial.available());//Block untill next char is here.
+    int b1 = (uint16_t)Serial.read()<<8;
+    while(!Serial.available());//Block untill next char is here.
+    int b2 = Serial.read();
+    return b1+b2;
+}
+
+long readLong(){
+  while(!Serial.available());//Block untill next char is here.
+  long b1 = (uint32_t)Serial.read()<<24;
+  while(!Serial.available());//Block untill next char is here.
+  long b2 = (uint32_t)Serial.read()<<16;
+  while(!Serial.available());//Block untill next char is here.
+  long b3 = (uint32_t)Serial.read()<<8;
+  while(!Serial.available());//Block untill next char is here.
+  long b4 = (uint32_t)Serial.read();
+  return b1+b2+b3+b4;
+}
 //////////////////////////////////////////
 ///Display functions//////////////////////
 //////////////////////////////////////////
 
 void displayChar(byte charicter)
 {
+  #if DEBUG
+    Serial.print("Displaying charicter:");Serial.println(charicter);
+  #endif  
   for(int n = 0;n<dotCount;n++)
   {
    if((1 << n) & charicter)
@@ -191,9 +216,11 @@ void identify_mode_receive_settings(char * driver){
     while(true){
         nextLine();
         setting = identify_mode_which_setting();
-        //Serial.print("Setting:");Serial.print(setting);
-        //Serial.println(current_line);
-        //Serial.print("Index:");Serial.println(charicter);
+        #if DEBUG >= 2
+        Serial.print("Setting:");Serial.print(setting);
+        Serial.println(current_line);
+        Serial.print("Index:");Serial.println(charicter);
+        #endif
         switch(setting){
             case CURSOR_DRIVER:  cursor_driver=String(&current_line[charicter]);
                                     break;
@@ -236,6 +263,9 @@ void identify_mode(){
 ////////////////////////////////////////////
 void idle_mode_next(){
    charicter = nextChar();
+   #if DEBUG
+        Serial.print("Idle mode, handling char:");Serial.println(String(charicter));
+   #endif
    switch(charicter){
       case  2:read_buffer_mode();break;
       case  3:set_cursor_pos();break;
@@ -273,16 +303,21 @@ void read_buffer_die(String message){
 }
 
 long read_buffer_read_check_sum(){
-  return Serial.read()*16777216+Serial.read()*65536+
-         Serial.read()*256+Serial.read();
+  return readLong();
 }
 
 void read_buffer_mode(){
-  long check_sum=0;
+  long check_sum_fchad=0;
+  long check_sum_brltty;
+  x=0;
+  y=0;
+  #if DEBUG
+  Serial.println("Entering read buffer mode.");
+  #endif
   while(true)
   {
     charicter = nextChar();
-    check_sum+=charicter;
+    check_sum_fchad+=charicter;
     if(charicter==0)
     {
       charicter=nextChar();
@@ -293,14 +328,25 @@ void read_buffer_mode(){
             x=0;
             y++;
             if(!in_buffer()){
+                #if DEBUG
                 read_buffer_die("ERROR END OF BUFFER REACHED WHILE GOING TO NEXT LINE");
+                #endif
                 return;
             }
             break;
         case 2: //EOB
             read_buffer_clear_eob();
-            if(check_sum!=read_buffer_read_check_sum()){
+            #if DEBUG
+            Serial.println("End of buffer.");
+            #endif
+            check_sum_brltty=read_buffer_read_check_sum();
+            if(check_sum_fchad!=check_sum_brltty){
             //when check sum fails try again.
+              #if DEBUG
+              Serial.print("CHECK SUM FAILED");
+              Serial.print(String(check_sum_fchad));Serial.print("!=");
+              Serial.println(String(check_sum_brltty));
+              #endif
               Serial.write(byte(0));
               read_buffer_mode();
             }
@@ -309,11 +355,16 @@ void read_buffer_mode(){
         default:;
       }
     }
-    x++;
     if(!in_buffer())
+        #if DEBUG
         return read_buffer_die("ERROR END OF BUFFER REACHED WHILE WRITTING TO BUFFER");
+        #endif
                                 
     buffer[x+y*buffer_columns]=charicter;
+    #if DEBUG
+    Serial.print("Adding charicter ");Serial.println(String(charicter));
+    #endif
+    x++;
   }
 }
 
@@ -321,15 +372,19 @@ void read_buffer_mode(){
 ////Mini Modes////////////////////////////////
 //////////////////////////////////////////////
 void set_cursor_pos(){
-    x=Serial.read()*256+Serial.read();
-    y=Serial.read()*256+Serial.read();
+    x=readInt();
+    y=readInt();
+    #if DEBUG
     Serial.print("CURSOR POSSITION SET TO:");Serial.print(String(x));
                                              Serial.print(",");
                                              Serial.println(String(y));
+    #endif
     if(in_buffer())
         displayChar(buffer[x+y*buffer_columns]);
     else{x=0;y=0;
+        #if DEBUG
         Serial.println("CURSOR ROUTED TO INVALID REGION WITHIN BUFFER.");
+        #endif
     }
 }
 
@@ -339,7 +394,9 @@ void send_cursor_pos(){
 }
 
 void receive_key(){
+    while(!Serial.available());//Block untill next char is here.
     Serial.write(Serial.read());
+    while(!Serial.available());//Block untill next char is here.
     Serial.write(Serial.read());
 }
 
