@@ -4,7 +4,8 @@
 #purposes of reading braille using a Fast CHAricter braille Display
 #(FCHAD) type device.
 #
-
+#TODO!!!!
+#Rewrite this file in C!  Python xlib doesn't work.
 from Xlib import X, display
 import Xlib
 
@@ -28,6 +29,7 @@ class buffer_cursor:
 
         # setup xlib
         latency = 0.001
+        
         for button in self._buttons:
             self._root.grab_button(button,
                     X.NONE,
@@ -41,17 +43,38 @@ class buffer_cursor:
         if pid:
             while 1:
                 try:
+        #Note that this does fail sometimes, because we interfere with
+        #ourselves due to bad multithreading.  This can only be fixed by
+        #rewritting in C to get around python-xlib misbehavior.
                     event = self._root.display.next_event()
                     if event.detail == X.KeyPress:
                         self._root.send(event)
                     else:
-                        print event
+                        x_pos=self._getpos();
+                        if x_pos != self._x_pos:
+                            self._x_pos=x_pos
+                            
+                        if self._x_pos == -1:
+                            self._host.send_key(1)
+                        elif self._x_pos > self._columns:
+                            self._host.send_key(2)
+                        else:
+                            self._host.send_key(3)
+                            self._host.send_key(self._x_pos)
+                            self._host.send_key(0)
                 except AttributeError:
                     pass
                 except ConnectionClosedError:
                     sys.exit()
         else:
-            while 1:
+            while 1:#Yes, I know this puts the CPU at 100%, I neet to rewrite in
+                    #C because python's xlib has a certain bug, which grabs
+                    #certain global hotkeys, when I add a hook to cursor 
+                    #movement.  AKA grab_pointer grabs too much :O :/ :(
+                    #And I can't even report this bug, because python_xlib is
+                    #out of date.  Indeed, you may wonder why I wrote this in
+                    #python2.  The reason, was, I couldn't find xlib bindings
+                    #for python3 at all!
                 sleep(latency)
                 self._update()
 
@@ -63,10 +86,14 @@ class buffer_cursor:
         data = display.Display().screen().root.query_pointer()._data
         return data["root_y"]
 
+    def _getpos(self):
+      return int(math.floor(self._mouseposx()/\
+            (self._screenWidth/(self._columns+2)))-1)
+                #plus forward and back buttons...
+
     def _update(self):
-      x_pos=math.floor(self._mouseposx()/\
-                (self._screenWidth/self._columns))
-      x_pos=int(x_pos)
+      x_pos=self._getpos();
       if x_pos != self._x_pos:
-        self._x_pos=x_pos
-        self._host.update(x_pos)
+         self._x_pos=x_pos
+      if 0 <= x_pos <=self._columns:
+         self._host.update(x_pos)

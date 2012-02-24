@@ -19,7 +19,7 @@
  *
  * This software is maintained by Timothy Hobbs <timothyhobbs@seznam.cz>
  */
-#define DEBUG             1
+#define DEBUG             0
 
 #define ERROR             0
 #define CURSOR_DRIVER     1
@@ -353,10 +353,12 @@ void read_buffer_mode(){
         default:;
       }
     }
-    if(!in_buffer())
+    if(!in_buffer()){
         #if DEBUG
-        return read_buffer_die("ERROR END OF BUFFER REACHED WHILE WRITTING TO BUFFER");
+        read_buffer_die("ERROR END OF BUFFER REACHED WHILE WRITTING TO BUFFER");
         #endif
+        return;
+    }
                                 
     buffer[x+y*buffer_columns]=charicter;
     #if DEBUG

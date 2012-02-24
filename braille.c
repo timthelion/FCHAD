@@ -35,7 +35,8 @@
 
 static int
 brl_construct (BrailleDisplay *brl, char **parameters, const char *device) {
-  return 0;
+  return 0; //Go through initialization sequence with FCHAD device,
+            //setting paramiters.
 }
 
 static void
@@ -73,7 +74,11 @@ brl_keyToCommand (BrailleDisplay *brl, KeyTableCommandContext context, int key) 
 
 static int
 brl_writeWindow (BrailleDisplay *brl, const wchar_t *text) {
-  return 1;
+  return 1;//Fill the FCHAD's buffer.  Are the bytes in the brl->buffer ASCII
+  //chars, or "braille bytes" with one bit acounting for each dot?  If the latter
+  //(preferable) then is it possible to request 6 dot braille from brltty?  The device
+  //driver should support both 6 and 8 dot braille(my current devices use 6 dots and
+  //for my purposes 6 dots may be prefered.)
 }
 
 #ifdef BRL_HAVE_STATUS_CELLS
@@ -85,5 +90,9 @@ brl_writeStatus (BrailleDisplay *brl, const unsigned char *status) {
 
 static int
 brl_readCommand (BrailleDisplay *brl, KeyTableCommandContext context) {
-  return EOF;
+  return EOF;//What is the difference between brl_readCommand and brl_readKey
+             //Finish initialization sequence after cursor driver is regisered
+             //with the FCHAD device.  Then go into idle mode.
+             //When in idle mode, we read two byte sequences sent by the FCHAD
+             //device.  These are key codes.
 }
