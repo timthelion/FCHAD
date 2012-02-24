@@ -208,7 +208,7 @@ byte identify_mode_which_setting(){
             return i;
     }
     return ERROR;
-  }
+}
 
 void identify_mode_receive_settings(char * driver){
     waitFor(driver);
@@ -347,7 +347,7 @@ void read_buffer_mode(){
               #endif
               Serial.write(byte(0));
               read_buffer_mode();
-            }
+            }else Serial.write(byte(1));
             return;
             break;
         default:;

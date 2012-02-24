@@ -132,7 +132,7 @@ ESCAPE SEQUENCES:
 After the End of buffer escape sequence is sent.  The brltty driver should send
 a 4 byte check sum which equals the sum of the bytes in the buffer.  If this
 check sum fails(which it may if the interaction is interupted by the cursor
-driver) the FCHAD will respond with 0.  
+driver) the FCHAD will respond with 0 if it succeeds it will respond with 1.  
 
 If an edge of the buffer is hit.  The firmware will spit out:
 "ERROR END OF BUFFER REACHED"
