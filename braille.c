@@ -139,7 +139,7 @@ unsigned char identify_mode_setting_eq(char * setting, char * buffer){
   unsigned char i=0;
   while(1)
   {
-    if(setting[i]==buffer[i]&&buffer[i]=='=')return i+1;
+    if(setting[i]=='\0')return i+1;
     if(setting[i]!=buffer[i])return 0;
     i++;
   }
@@ -181,7 +181,9 @@ static void identify_mode_receive_settings(char * sender){
                                     break;
             case END_HEADER:     return;break;
             case ERROR:         Serial_print("Unknown setting:");
-                                Serial_println(itoa(current_line));break;
+                                Serial_println(current_line);
+                                snprintf(current_line, lineBufferLength,"%d",charicter);
+                                Serial_println(current_line);break;
             default:;
         }
     }
@@ -197,16 +199,19 @@ brl_construct (BrailleDisplay *brl, char **parameters, const char *device) {
   identify_mode_send_settings();
   do{
     Serial_nextLine(current_line);
-    current_line[4]="\0";//EVIL :D
+    current_line[4]='\0';//EVIL :D
   }while(strcmp(current_line,"WAIT")!=0);
-//  delay(atoi(&current_line[5]));//EVIL :D :D
+  approximateDelay(atoi(&current_line[5]));//EVIL :D :D
   identify_mode_receive_settings("FCHAD");
+  brl->textColumns=buffer_columns;
+  brl->textRows=buffer_rows;
   return 1; //Go through initialization sequence with FCHAD device,
             //setting paramiters.
 }
 
 static void
 brl_destruct (BrailleDisplay *brl) {
+    //There is no destruct
 }
 
 #if PYTHON
@@ -266,6 +271,7 @@ def writeSettings(serial):
 
 static int
 brl_writeWindow (BrailleDisplay *brl, const wchar_t *text) {
+  Serial_println(brl->buffer);
   return 1;//Fill the FCHAD's buffer.  Are the bytes in the brl->buffer ASCII
   //chars, or "braille bytes" with one bit acounting for each dot?  If the latter
   //(preferable) then is it possible to request 6 dot braille from brltty?  The device
