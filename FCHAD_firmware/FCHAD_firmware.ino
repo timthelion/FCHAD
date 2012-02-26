@@ -45,7 +45,7 @@ String settings[]={
 #define dotCount 6
 const int dotPins[] = {13,11,9,7,5,3};
 
-#define serialWaitTime 300 //ms
+#define serialWaitTime 3000
 
 #define buffer_size_max 800
 byte buffer[buffer_size_max];  //The buffer of braile bytes to be displayed.
@@ -254,7 +254,7 @@ void identify_mode(){
     Serial.print("WAIT ");Serial.println(serialWaitTime);
     identify_mode_send_settings();
     identify_mode_receive_settings("CURSOR DRIVER");
-    delay(serialWaitTime);
+    delay(serialWaitTime/10);
     identify_mode_send_settings();
     identify_mode_cleanup();
   }

@@ -24,16 +24,24 @@
 import sys, os, time
 
 from serial import Serial
-
 from xlib_buffer_cursor import buffer_cursor
+
+sys.path.insert(0, '../')#GRRRRR :( :(
+from loggingSerial import *
+from FCHADsettings import *
+settings_to_send=["CURSOR_DRIVER","BUFFER_COLUMNS","BUFFER_ROWS"]#which of the settings in settings(by key),
+#should we send to the FCHAD?
+
 
 class braille_reader_host:
     def __init__(self,serial,):
         self._serial = serial
-        self._cursorDriverName="pythonXlib"
+        settings["CURSOR_DRIVER"][1]="pythonXlib"
         
         self._columns            = 100
+        settings["BUFFER_COLUMNS"][1]  = self._columns
         self._rows               = 1
+        settings["BUFFER_ROWS"][1]  = self._rows
 
         self.serial_init()
         self._cursor = buffer_cursor(self,self._columns,self._rows)
@@ -45,44 +53,46 @@ class braille_reader_host:
             print "Attacking every "+str(delay)+" seconds.\n"
             for c in ['a','t','t','a','c','k',str(t)]:
                 time.sleep(delay)
-                self._serial.write(chr(5))
-                self._serial.write(chr(0))
-                self._serial.write(c)
+                serialLogger.serialwrite(self._serial,chr(5))
+                serialLogger.serialwrite(self._serial,chr(0))
+                serialLogger.serialwrite(self._serial,c)
         print "Done with attack.\n"
     
     def serial_init(self):
-        self._serial.write("CURSOR DRIVER - FCHAD?\n")
-        self._serial.write("CURSOR DRIVER\n")
-        self._serial.write("CURSOR_DRIVER="+self._cursorDriverName+"\n")
-        self._serial.write("BUFFER_ROWS="+str(self._rows)+"\n")
-        time.sleep(1)#TODO: Checksums, checksums, checksums!!!!
-        self._serial.write("BUFFER_COLUMNS="+str(self._columns)+"\n")
-        self._serial.write("END_HEADER\n")
-        
+        serialLogger.serialwrite(self._serial,"CURSOR DRIVER - FCHAD?\n")
+        time.sleep(0.1)
+        readSettings(self._serial,serialLogger)
+        writeSettings(self._serial,serialLogger,"CURSOR DRIVER\n",settings_to_send)
+            
     def update(self, pos):# fix this code to make it work with
                           # possitions > 255
-         self._serial.write(chr(3))
-         self._serial.write(chr(0))
-         self._serial.write(chr(pos))
-         self._serial.write(chr(0))
-         self._serial.write(chr(0))
+         serialLogger.serialwrite(self._serial,chr(3))
+         serialLogger.serialwrite(self._serial,chr(0))
+         serialLogger.serialwrite(self._serial,chr(pos))
+         serialLogger.serialwrite(self._serial,chr(0))
+         serialLogger.serialwrite(self._serial,chr(0))
     
     def send_key(self,keycode):
-        self._serial.write(chr(5))
-        self._serial.write(chr(0))        
-        self._serial.write(chr(keycode))#for keycodes up to 255
+        serialLogger.serialwrite(self._serial,chr(5))
+        serialLogger.serialwrite(self._serial,chr(0))        
+        serialLogger.serialwrite(self._serial,chr(keycode))#for keycodes up to 255
         
     def __delete__(self):
         self._serial.close()
 
-
-serial = Serial(sys.argv[1], 9600, timeout=1)
 help = "--help" in sys.argv or "-h" in sys.argv
+log = "--log" in sys.argv
+serialLogFile=None
 
 if help:
     m = """Cursor driver for controlling FCHAD type devices.
     Start BRLTTY first!
+    --log to log serial transactions to file.
     """
     print m
 else:
+    serial = Serial(sys.argv[1], 9600, timeout=1)
+    if log:
+        serialLogFile = open('serialLogFile.log', 'w')
+    serialLogger=loggingSerial(serialLogFile)
     brh = braille_reader_host(serial)
