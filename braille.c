@@ -40,7 +40,8 @@
 //#define BRL_HAVE_PACKET_IO
 //#define BRL_HAVE_KEY_CODES
 #include "brl_driver.h"
-
+//This should all be in a separate header file which is shared between brltty
+//and the FCHAD firmware(written in ino, which is C++).
 #define ERROR             0
 #define CURSOR_DRIVER     1
 #define BRLTTY_DRIVER     2
@@ -48,9 +49,9 @@
 #define BUFFER_COLUMNS    4
 #define BUFFER_ROWS       5
 #define DOTCOUNT          6
-#define END_HEADER        7
-
-#define NumberOfSettings  8
+#define SERIAL_WAIT_TIME  7
+#define END_HEADER        8
+#define NumberOfSettings  9
 
 char * settings[]={
   "ERROR",
@@ -60,6 +61,7 @@ char * settings[]={
   "BUFFER_COLUMNS",
   "BUFFER_ROWS",
   "DOTCOUNT",
+  "SERIAL_WAIT_TIME",
   "END_HEADER"};
 
 
@@ -71,7 +73,7 @@ int buffer_size_max=800;
 #define lineBufferLength 40 
 char * brltty_driver="BRLTTY_C";
 char cursor_driver[lineBufferLength];
-unsigned char charicter;
+unsigned char character;
 
 static unsigned char *previousCells = NULL; /* previous pattern displayed */
 
@@ -81,6 +83,7 @@ static unsigned char *previousCells = NULL; /* previous pattern displayed */
 #define SERIAL_INPUT_TIMEOUT 100
 #define SERIAL_WAIT_TIMEOUT 200
 static GioEndpoint *gioEndpoint = NULL;
+int serial_wait_time = 0;
 
 /*
 """
@@ -174,7 +177,7 @@ static unsigned char Serial_read()
 static void Serial_write(unsigned char byte)
 {
     //#if SERIAL
-    gioWriteData(gioEndpoint, &byte, 0);
+    gioWriteData(gioEndpoint, &byte, 1);
     //#else
     //printf(">>\n");
     //printByte(byte);
@@ -210,7 +213,9 @@ static void identify_mode_send_settings(){
   Serial_print(settings[BRLTTY_DRIVER]);
       Serial_print("=");
       Serial_println(brltty_driver);
+  Serial_read();
   Serial_println(settings[END_HEADER]);
+  Serial_read();
 }
 
 unsigned char identify_mode_setting_eq(char * setting, char * buffer){
@@ -227,8 +232,8 @@ unsigned char identify_mode_setting_eq(char * setting, char * buffer){
 unsigned char identify_mode_which_setting(char * buffer){
     unsigned char i;
     for(i=0;i<NumberOfSettings;i++){
-        charicter=identify_mode_setting_eq(settings[i], buffer);
-        if(charicter)
+        character=identify_mode_setting_eq(settings[i], buffer);
+        if(character)
             return i;
     }
     return ERROR;
@@ -242,27 +247,36 @@ static int identify_mode_receive_settings(char * sender){
         Serial_nextLine(current_line);
     }
     unsigned char setting;
+    unsigned char known_setting=1;
     while(1){
+        printf("Getting a setting.\n");
         Serial_nextLine(current_line);
         setting = identify_mode_which_setting(current_line);
         switch(setting){
-            case CURSOR_DRIVER:  strcpy(&current_line[charicter],cursor_driver);
-                                    break;
-            case BRLTTY_DRIVER:  strcpy(&current_line[charicter],brltty_driver);
-                                    break;
-            case BUFFER_COLUMNS: buffer_columns=atoi(&current_line[charicter]);
-                                    break;
-            case BUFFER_ROWS:    buffer_rows=atoi(&current_line[charicter]);
-                                    break;
-            case BUFFER_SIZE_MAX: buffer_size_max=atoi(&current_line[charicter]);
-                                    break;
-            case END_HEADER:     return 1;break;
-            case ERROR:         Serial_print("Unknown setting:");
-                                Serial_println(current_line);
-                                snprintf(current_line, lineBufferLength,"%d",charicter);
-                                Serial_println(current_line);break;
+            case CURSOR_DRIVER:
+            strcpy(&current_line[character],cursor_driver);break;
+            case BRLTTY_DRIVER:
+            strcpy(&current_line[character],brltty_driver);break;
+            case BUFFER_COLUMNS:
+            buffer_columns=atoi(&current_line[character]);break;
+            case BUFFER_ROWS:
+            buffer_rows=atoi(&current_line[character]);break;
+            case BUFFER_SIZE_MAX:
+            buffer_size_max=atoi(&current_line[character]);break;
+            case SERIAL_WAIT_TIME:
+            serial_wait_time=atoi(&current_line[character]);break;
+            case END_HEADER:
+            Serial_write(known_setting);     
+            return 1;break;
+            case ERROR:
+            known_setting=0;
+            printf("Unknown setting:");
+            printf(current_line);
+            printf("%d\n",character);break;
             default:;
         }
+        printf("Confirming serial action.\n");
+        Serial_write(known_setting);
     }
     return 0;//This should never happen.
 }
@@ -285,12 +299,12 @@ static int init(BrailleDisplay *brl)
   printf("Done getting settings from FCHAD. Sending brltty driver settings.\n");
   identify_mode_send_settings();
   printf("Settings sent, waiting for cursor driver to start up.\n");
-  do{
+  do{//Wait for the WAIT command from the FCHAD device.
     Serial_nextLine(current_line);
-    current_line[4]='\0';//EVIL :D
+    printByte(current_line[0]);
   }while(strcmp(current_line,"WAIT")!=0);
-  printf("Cusor driver loading...\n");
-  approximateDelay(atoi(&current_line[5]));//EVIL :D :D
+  printf("Cusor driver loading... will wait %d\n",serial_wait_time);
+  approximateDelay(serial_wait_time);
   printf("Updating settings...\n");
   Serial_println("BRLTTY DRIVER - FCHAD?");
   if(!identify_mode_receive_settings("FCHAD"))return 0;
@@ -300,7 +314,7 @@ static int init(BrailleDisplay *brl)
   printf("Done with init.\n");
   printf("buffer_columns:%d\n",brl->textColumns);
   printf("buffer_rows:%d\n",brl->textRows);
-  approximateDelay(1000);  
+  //approximateDelay(1000);  
   return 1; //Go through initialization sequence with FCHAD device,
             //setting paramiters.
 
@@ -361,7 +375,8 @@ static char inbuffer(int x, int y, int columns, int rows)
     return x>=0 && y>=0 && x<columns && y<rows;
 }
 
-static void writeCheckSum(long checksum)
+
+static void writeLong(long checksum)
 {
     Serial_write((uint8_t)((checksum&0xFF000000)>>24));
     Serial_write((uint8_t)((checksum&0x00FF0000)>>16));
@@ -387,7 +402,8 @@ long readLong(){
   return b1+b2+b3+b4;
 }
 
-
+#define writeChecksum writeLong
+#define readChecksum readLong
 static int writeWindow(BrailleDisplay *brl, const wchar_t *text)
 {
   printf("Entering write buffer mode.\n");
@@ -398,6 +414,7 @@ static int writeWindow(BrailleDisplay *brl, const wchar_t *text)
   printf("Writting buffer.\n");
   long checksum=0;
   long checksum_fchad;
+  int bytes_written_since_last_check=0;
   int buff_pos=0;
   int x_pos=0;
   int y_pos=0;
@@ -414,8 +431,8 @@ static int writeWindow(BrailleDisplay *brl, const wchar_t *text)
               Serial_write(0);//End of buffer
               Serial_write(2);
               printf("Writting checksum:%d\n",checksum);
-              writeCheckSum(checksum);
-              checksum_fchad=readLong();
+              writeChecksum(checksum);
+              checksum_fchad=readChecksum();
               printf("Checksum read:%d\n",checksum_fchad);
               if(checksum_fchad==checksum)
               {
@@ -434,6 +451,14 @@ static int writeWindow(BrailleDisplay *brl, const wchar_t *text)
               Serial_write(1);
           }
       }
+      if(bytes_written_since_last_check>=10)
+      {
+          Serial_write(0);
+          Serial_write(3);
+          printf("Checked %d\n",Serial_read());
+          bytes_written_since_last_check=0;
+      }
+      bytes_written_since_last_check++;
       if(brl->buffer[buff_pos]==0)
         Serial_write(0);
       Serial_write(brl->buffer[buff_pos]);
@@ -482,7 +507,7 @@ def brltty_fill_buffer(buf,retry=False):
     bytes_written_since_last_check = 0
     for braille_byte in buff:#Write to the buffer.
         if braille_byte==0: serialLogger.write(chr(braille_byte))
-        #keeping in mind that 0 is an escape charicter and must be written 
+        #keeping in mind that 0 is an escape character and must be written 
         #twice.  This is for a single row buffer support exists for more rows.
         #To go to the next row, use the escape sequence 00 01.  The C driver
         #should support multi row buffers, but since the current cursor driver
@@ -580,12 +605,17 @@ else:
     setting_manager=FCHAD_setting_manager(serialLogger)
     brltty_init()
     print "Filling buffer."
-    buff=[]
-    for i in range(setting_manager.settings["BUFFER_COLUMNS"][1]):
-                                               #this is for a single row buffer
-                                               #support exists for more rows.
-        if i > 255: i=i-255*math.floor(i/255)
-        buff.append(i)
+    buff=[0b10000000,
+          0b01000000,
+          0b00100000,
+          0b00010000,
+          0b00001000,
+          0b00000100]#test buffer for 6 bits.
+    #for i in range(setting_manager.settings["BUFFER_COLUMNS"][1]):
+    #                                           #this is for a single row buffer
+    #                                           #support exists for more rows.
+    #    if i > 255: i=i-255*math.floor(i/255)
+    #    buff.append(i)
     print "Buffer length:"
     print setting_manager.settings["BUFFER_COLUMNS"][1]
     brltty_fill_buffer(buff)

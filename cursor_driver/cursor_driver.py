@@ -39,7 +39,7 @@ class braille_reader_host:
 
         self._setting_manager=FCHAD_setting_manager(serialLogger)
         self._setting_manager.settings["CURSOR_DRIVER"][1]="pythonXlib"
-        self._columns            = 100
+        self._columns            = 6
         self._setting_manager.settings["BUFFER_COLUMNS"][1]  = self._columns
         self._rows               = 1
         self._setting_manager.settings["BUFFER_ROWS"][1]  = self._rows

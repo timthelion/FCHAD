@@ -202,8 +202,9 @@ void identify_mode_send_settings(){
   identify_mode_send_setting(BUFFER_ROWS,       String(buffer_rows,DEC));
   identify_mode_send_setting(DOTCOUNT,          String(dotCount,DEC));
   identify_mode_send_setting(SERIAL_WAIT_TIME,  String(serialWaitTime,DEC));
-
+  
   Serial.println(settings[END_HEADER]);
+  nextChar();
 }
 
 byte identify_mode_setting_eq(String setting){
@@ -329,8 +330,9 @@ void process_eob(int xi, int yi, long checksum_fchad)
     long checksum_brltty;
     read_buffer_clear_eob(xi,yi);
     debug_message_ln("End of buffer.",1);
-    writeChecksum(checksum_fchad);
-    checksum_brltty=readChecksum();
+    writeChecksum(checksum_fchad);//This should be flipped.  We should read then
+    checksum_brltty=readChecksum();//write, but that hangs.  I honestly don't
+    //why.  It doesn't matter though, really.
     if(checksum_fchad!=checksum_brltty){
     //when check sum fails try again.
         debug_message_ln("CHECK SUM FAILED",1);

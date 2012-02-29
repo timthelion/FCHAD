@@ -37,7 +37,8 @@ SERIAL_WAIT_TIME=###\n
 END_HEADER\n
 """
 After each line, the FCHAD will wait for a single byte.  The driver should reply
-with 1 for success and 0 for some kind of error.
+with 1 for success and 0 for some kind of error after every line, including the
+END_HEADER line at the end.
 
 The brltty driver then responds by again identifying and setting any settings we
 wish to set, and exiting the mode.
@@ -50,7 +51,8 @@ BUFFER_COLUMNS=###\n
 BUFFER_ROWS=###\n
 END_HEADER\n
 """
-The brltty driver should wait for 1 or 0 from the FCHAD after each line.
+The brltty driver should wait for 1 or 0 from the FCHAD after each line
+including the END_HEADER line at the end.
 
 Now we will have to wait.  The brltty driver should read from the device untill
 something comes.  We are waiting for the cursor driver to start up.

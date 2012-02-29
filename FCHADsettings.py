@@ -48,7 +48,9 @@ class FCHAD_setting_manager:
         while 1:
             setting=self.serialLogger.readline()
             known_setting=1
-            if setting == "END_HEADER": break
+            if setting == "END_HEADER":
+                self.serialLogger.write(chr(known_setting))
+                break
             psetting=setting.partition("=")
             try:
                 value = self.settings[psetting[0]][0](psetting[2])
@@ -67,3 +69,4 @@ class FCHAD_setting_manager:
                 +str(self.settings[setting][1])+"\n")
             self.serialLogger.read()
         self.serialLogger.write("END_HEADER\n")
+        self.serialLogger.read()
