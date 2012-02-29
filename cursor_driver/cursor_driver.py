@@ -46,7 +46,10 @@ class braille_reader_host:
 
         self.serial_init()
         time.sleep(self._setting_manager.settings["SERIAL_WAIT_TIME"][1]/100.0)
-        self._cursor = buffer_cursor(self,self._columns,self._rows)
+        if nap:    
+            self.nap()
+        else:
+            self._cursor = buffer_cursor(self,self._columns,self._rows)
         
     def serial_init(self):
         serialLogger.write("CURSOR DRIVER - FCHAD?\n")
@@ -68,17 +71,30 @@ class braille_reader_host:
         serialLogger.write(chr(keycode >> 8))
         serialLogger.write(chr(keycode &  0X00FF))
         
+    def nap(self):
+        print "Napping..."
+        for i in range(10000):
+            serialLogger.write(chr(6))
+            serialLogger.write(chr(255))
+            time.sleep(0.05)
+            serialLogger.write(chr(6))
+            serialLogger.write(chr(0))
+            time.sleep(0.05)
+        print "Good morning!"
+        
     def __delete__(self):
         self._serial.close()
 
 help = "--help" in sys.argv or "-h" in sys.argv
 log = "--log" in sys.argv
+nap = "--nap" in sys.argv
 serialLogFile=None
 
 if help:
     m = """Cursor driver for controlling FCHAD type devices.
     Start BRLTTY first!
     --log to log serial transactions to file.
+    --nap use the LED's to do an apha state nap.
     """
     print m
 else:

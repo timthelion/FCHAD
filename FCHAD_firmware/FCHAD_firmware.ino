@@ -244,6 +244,7 @@ void identify_mode_receive_settings(char * driver){
             case BUFFER_ROWS:
                 buffer_rows=atoi(&current_line[character]);break;
             case END_HEADER:
+                Serial.write(byte(1));
                 return;break;
             case ERROR:   
                     debug_message("Unknown setting:",1);

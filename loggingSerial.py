@@ -29,7 +29,7 @@ import serial
 class loggingSerial:
     def __init__(self,serialLogFile,serialdev):
         self.serialdev=serialdev
-        serialLogFile.write("Beginning of log file:\n")
+        if serialLogFile:serialLogFile.write("Beginning of log file:\n")
         self.serialLogFile = serialLogFile
         
     def read(self):
