@@ -3,7 +3,6 @@
 #if PYTHON
 """
 #endif
-
 /*
  * BRLTTY - A background process providing access to the console screen (when in
  *          text mode) for a blind person using a refreshable braille display.
@@ -83,12 +82,11 @@ static unsigned char *previousCells = NULL; /* previous pattern displayed */
 #define SERIAL_WAIT_TIMEOUT 200
 static GioEndpoint *gioEndpoint = NULL;
 
-#if PYTHON
+/*
 """
-
 from serial import Serial
 import sys, os, time, math
-from FCHADsettings import *
+from FCHADsettings import FCHAD_setting_manager
 from loggingSerial import *
 
 settings_to_send=["BRLTTY_DRIVER"]#which of the settings in settings(by key),
@@ -100,12 +98,9 @@ keycodes = {
     3: lambda : "Braille cell pressed at possition:"
     }
 
-
-#endif
-
-#if PYTHON
 """
-#endif
+*/
+
 static void Serial_init(const char *identifier)
 {//COPY PASTE from connectResource() in the Voyager driver...
     GioDescriptor descriptor;
@@ -124,6 +119,25 @@ static void Serial_init(const char *identifier)
     }
     return 0;
 }
+
+static void printByte(unsigned char byte)
+{
+    printf("CHAR:%c\n",byte);
+    printf("DEC:%d\n",byte);    
+    if(byte & (1))    printf("1"  ); else printf ("0"  );
+    if(byte & (1<<3)) printf("1\n"); else printf ("0\n");
+  
+    if(byte & (1<<1)) printf("1"  ); else printf ("0"  );
+    if(byte & (1<<4)) printf("1\n"); else printf ("0\n");
+  
+    if(byte & (1<<2))  printf("1"  ); else printf ("0"  );
+    if(byte & (1<<5))  printf("1\n"); else printf ("0\n");
+  
+    if(byte & (1<<6))  printf("1"  ); else printf ("0"  );
+    if(byte & (1<<7))  printf("1\n"); else printf ("0\n");
+
+}
+
 static void Serial_print(char * line)
 {
     #if SERIAL
@@ -143,8 +157,11 @@ static void Serial_println(char * line)
 static unsigned char Serial_read()
 {
     #if SERIAL
+    while(!gioAwaitInput(gioEndpoint,0));
     unsigned char byte;
     gioReadByte(gioEndpoint, &byte,0);
+    printf("<<\n");
+    printByte(byte);
     return byte;
     #else
     char * num[4];    
@@ -157,21 +174,10 @@ static unsigned char Serial_read()
 static void Serial_write(unsigned char byte)
 {
     //#if SERIAL
-    
-    gioWriteData(gioEndpoint, byte, 1);
+    gioWriteData(gioEndpoint, &byte, 0);
     //#else
-    printf("XX\n");
-    if(byte & (1))    printf("1"  ); else printf ("0"  );
-    if(byte & (1<<3)) printf("1\n"); else printf ("0\n");
-  
-    if(byte & (1<<1)) printf("1"  ); else printf ("0"  );
-    if(byte & (1<<4)) printf("1\n"); else printf ("0\n");
-  
-    if(byte & (1<<2))  printf("1"  ); else printf ("0"  );
-    if(byte & (1<<5))  printf("1\n"); else printf ("0\n");
-  
-    if(byte & (1<<6))  printf("1"  ); else printf ("0"  );
-    if(byte & (1<<7))  printf("1\n"); else printf ("0\n");
+    //printf(">>\n");
+    //printByte(byte);
     //#endif
     //Write one byte to serial.
 }
@@ -186,13 +192,14 @@ static void Serial_nextLine(char * buffer)
         do{
             while(!gioAwaitInput(gioEndpoint,0));
             gioReadByte(gioEndpoint, &byte,0);
-        }while(byte=='\0');
+        }while(byte=='\0');        
         buffer[i]=byte;
         i++;
     }
     buffer[i-1]='\0';
-    printf("%d\n",i);
     if(i<=1)Serial_nextLine(buffer);
+    printf(buffer);
+    printf("\n");
     #else
     gets(buffer);
     #endif
@@ -249,7 +256,7 @@ static int identify_mode_receive_settings(char * sender){
                                     break;
             case BUFFER_SIZE_MAX: buffer_size_max=atoi(&current_line[charicter]);
                                     break;
-            case END_HEADER:     return;break;
+            case END_HEADER:     return 1;break;
             case ERROR:         Serial_print("Unknown setting:");
                                 Serial_println(current_line);
                                 snprintf(current_line, lineBufferLength,"%d",charicter);
@@ -257,7 +264,7 @@ static int identify_mode_receive_settings(char * sender){
             default:;
         }
     }
-    return 1;
+    return 0;//This should never happen.
 }
 
 static int init(BrailleDisplay *brl)
@@ -285,6 +292,7 @@ static int init(BrailleDisplay *brl)
   printf("Cusor driver loading...\n");
   approximateDelay(atoi(&current_line[5]));//EVIL :D :D
   printf("Updating settings...\n");
+  Serial_println("BRLTTY DRIVER - FCHAD?");
   if(!identify_mode_receive_settings("FCHAD"))return 0;
   brl->textColumns=buffer_columns;
   brl->textRows=buffer_rows;
@@ -292,6 +300,7 @@ static int init(BrailleDisplay *brl)
   printf("Done with init.\n");
   printf("buffer_columns:%d\n",brl->textColumns);
   printf("buffer_rows:%d\n",brl->textRows);
+  approximateDelay(1000);  
   return 1; //Go through initialization sequence with FCHAD device,
             //setting paramiters.
 
@@ -308,35 +317,45 @@ brl_destruct (BrailleDisplay *brl) {
     //There is no destruct
 }
 
-#if PYTHON
+/*
 """
-def brltty_init(serial):
-    DEVICE_ID = serialLogger.serialreadline(serial)
+def waitFor(command):
+    while not serial.inWaiting():1#wait for cursor driver to load.
+    #If we get something else, we return what we got.
+    received_command=serialLogger.readline()
+    if received_command==command:
+        return None
+    else:
+        return received_command
+
+def brltty_init():
+    DEVICE_ID = serialLogger.readline()
     print "Device ID:" + DEVICE_ID
     if not DEVICE_ID.startswith("FCHAD"):
         print "Not an FCHAD device."
         sys.exit()
-    serialLogger.serialwrite(serial,"BRLTTY DRIVER - FCHAD?\n")
-    readSettings(serial)
-    settings["BRLTTY_DRIVER"][1]="DummyPython"
-    writeSettings(serial,"BRLTTY DRIVER\n",settings_to_send)
+    print "Gettings settings from FCHAD."
+    setting_manager.readSettings("BRLTTY DRIVER - FCHAD?\n")
+    print "Sending settings to FCHAD."
+    setting_manager.settings["BRLTTY_DRIVER"][1]="DummyPython"
+    setting_manager.writeSettings("BRLTTY DRIVER\n",settings_to_send)
     print "Successfully initialized(we hope), now go start up the cursor driver."
-    while not serial.inWaiting():1#wait for cursor driver to load.
-    wait_command=serialLogger.serialreadline(serial)
-    pwait_command=wait_command.partition(" ")
-    if pwait_command[0]=="WAIT":
-        time.sleep(1000.0/int(pwait_command[2]))
-        readSettings(serial)
+    
+    wait_command = waitFor("WAIT")
+    if not wait_command:
+        time.sleep(setting_manager.settings["SERIAL_WAIT_TIME"][1]/100.0)
+        print "Reading settings..."
+        setting_manager.readSettings("BRLTTY DRIVER - FCHAD?\n")
     else:
         print "PROTOCOL ERROR, I EXPECTED 'WAIT' INSTEAD I GOT:"+wait_command
         sys.exit()
-    readSettings(serial)
+    print "Updated settings..."
 
 #endif
 
-#if PYTHON
+
 """
-#endif
+*/
 static char inbuffer(int x, int y, int columns, int rows)
 {
     return x>=0 && y>=0 && x<columns && y<rows;
@@ -350,10 +369,35 @@ static void writeCheckSum(long checksum)
     Serial_write((uint8_t) (checksum&0x000000FF));
 }
 
+long readLong(){
+  unsigned char cb1 = 10;
+  while(cb1!=0)cb1=Serial_read();
+  cb1=Serial_read();
+  unsigned char cb2 = Serial_read();
+  unsigned char cb3 = Serial_read();
+  unsigned char cb4 = Serial_read();
+  printByte(cb1);
+  printByte(cb2);
+  printByte(cb3);
+  printByte(cb4);    
+  long b1 = (uint32_t)cb1<<24;
+  long b2 = (uint32_t)cb2<<16;
+  long b3 = (uint32_t)cb3<<8;
+  long b4 = (uint32_t)cb4;
+  return b1+b2+b3+b4;
+}
+
+
 static int writeWindow(BrailleDisplay *brl, const wchar_t *text)
 {
+  printf("Entering write buffer mode.\n");
+  if(!Serial_read()){
+      printf("Something happended.");
+      return 0;
+  }
   printf("Writting buffer.\n");
   long checksum=0;
+  long checksum_fchad;
   int buff_pos=0;
   int x_pos=0;
   int y_pos=0;
@@ -361,6 +405,7 @@ static int writeWindow(BrailleDisplay *brl, const wchar_t *text)
   {
       if(!inbuffer(x_pos,y_pos,brl->textColumns,brl->textRows))
       {
+          printf("x:%d,y:%d,brl->textColumns:%d,brl->textRows:%d\n",x_pos,y_pos,brl->textColumns,brl->textRows);
           x_pos=0;
           y_pos++;
           if(y_pos>=brl->textRows)
@@ -368,8 +413,11 @@ static int writeWindow(BrailleDisplay *brl, const wchar_t *text)
               printf("EOB\n");
               Serial_write(0);//End of buffer
               Serial_write(2);
+              printf("Writting checksum:%d\n",checksum);
               writeCheckSum(checksum);
-              if(Serial_read())
+              checksum_fchad=readLong();
+              printf("Checksum read:%d\n",checksum_fchad);
+              if(checksum_fchad==checksum)
               {
                 printf("Buffer written.\n");
                 return 1;
@@ -377,7 +425,7 @@ static int writeWindow(BrailleDisplay *brl, const wchar_t *text)
               else
               {
                 printf("Checksum failed.\n");  
-                writeWindow(brl,text);
+                return 0;//writeWindow(brl,text);
               }
           }else
           {
@@ -389,7 +437,6 @@ static int writeWindow(BrailleDisplay *brl, const wchar_t *text)
       if(brl->buffer[buff_pos]==0)
         Serial_write(0);
       Serial_write(brl->buffer[buff_pos]);
-      approximateDelay(10);
       checksum=checksum+brl->buffer[buff_pos];
       x_pos++;buff_pos++;
   }
@@ -400,42 +447,74 @@ static int writeWindow(BrailleDisplay *brl, const wchar_t *text)
 static int
 brl_writeWindow (BrailleDisplay *brl, const wchar_t *text) {
  if(cellsHaveChanged(previousCells, brl->buffer, buffer_size_max, NULL, NULL))
-    writeWindow(brl,text);
+ {   
+        Serial_write(2);
+        writeWindow(brl,text);
+ }
  else Serial_print("NO CHANGES");
 }
 
-
-#if PYTHON
+/*
 """
-def brltty_fill_buffer(serial, buf,retry=False):
-    if not retry: serialLogger.serialwrite(serial,chr(2))
-    #Tell the FCHAD device to enter read buffer mode.
-    checksum = 0
-    for braille_byte in buff:#Write to the buffer.
-        if braille_byte==0: serialLogger.serialwrite(serial,chr(braille_byte))
-        #keeping in mind that 0 is an escape charicter and must be written 
-        #twice.  This is for a single row buffer support exists for more rows.
-        #To go to the next row, use the escape sequence 00 01.  The C driver
-        #should support multi row buffers, but since the current cursor driver
-        #does not take advantage of this capability, I won't implement it now.
-        serialLogger.serialwrite(serial,chr(braille_byte))
-        checksum = checksum + braille_byte
-    serialLogger.serialwrite(serial,chr(0))#Close read/write buffer mode.
-    serialLogger.serialwrite(serial,chr(2))
-    #write check sum
+def write_checksum(checksum):
     checksum_bytes=[]
     checksum_bytes.append(chr((checksum&0xFF000000)>>24))
     checksum_bytes.append(chr((checksum&0x00FF0000)>>16))
     checksum_bytes.append(chr((checksum&0x0000FF00)>>8))
     checksum_bytes.append(chr( checksum&0x000000FF))
     for checksum_byte in checksum_bytes:
-        serialLogger.serialwrite(serial,checksum_byte)
-    if not serialLogger.serialread(serial): brltty_fill_buffer(serial,buff,True)
-#endif
+        serialLogger.write(checksum_byte)
 
-#if PYTHON
+def read_checksum():
+    checksum =  ord(serialLogger.read()) << 24
+    checksum += ord(serialLogger.read()) << 16
+    checksum += ord(serialLogger.read()) << 8
+    checksum += ord(serialLogger.read())
+    return checksum
+    
+
+def brltty_fill_buffer(buf,retry=False):
+    if not retry:
+        serialLogger.write(chr(2))
+    #Tell the FCHAD device to enter read buffer mode.
+    checksum = 0
+    bytes_written=0
+    bytes_written_since_last_check = 0
+    for braille_byte in buff:#Write to the buffer.
+        if braille_byte==0: serialLogger.write(chr(braille_byte))
+        #keeping in mind that 0 is an escape charicter and must be written 
+        #twice.  This is for a single row buffer support exists for more rows.
+        #To go to the next row, use the escape sequence 00 01.  The C driver
+        #should support multi row buffers, but since the current cursor driver
+        #does not take advantage of this capability, I won't implement it now.
+        serialLogger.write(chr(braille_byte))
+        checksum = checksum + braille_byte
+        bytes_written+=1
+        bytes_written_since_last_check+=1
+        if bytes_written_since_last_check>=10:
+            print "Bytes written:"
+            print bytes_written
+            print "Checking progress."
+            serialLogger.write(chr(0))
+            serialLogger.write(chr(3))
+            serialLogger.read()
+            print "Confirmed."
+            bytes_written_since_last_check=0
+    serialLogger.write(chr(0))#Close read/write buffer mode.
+    serialLogger.write(chr(2))
+    write_checksum(checksum)
+    print "Reading checksum."
+    fchad_checksum=read_checksum()
+    if not fchad_checksum == checksum:
+        print "Checksum failed."
+        print "FCHAD's checksum:"
+        print fchad_checksum
+        print "BRLTTY driver checksum:"
+        print checksum
+        
+        #brltty_fill_buffer(buff,True)
 """
-#endif
+*/
 
 #ifdef BRL_HAVE_KEY_CODES
 static int
@@ -458,22 +537,22 @@ brl_readCommand (BrailleDisplay *brl, KeyTableCommandContext context) {
              //device.  These are key codes.
 }
 
-#if PYTHON
+/*
 """
-def getKeyCode(serial):
+def getKeyCode():
     while not serial.inWaiting()>2:1
-    keycode = ord(serialLogger.serialread(serial)) << 8
-    return keycode + ord(serialLogger.serialread(serial))
+    keycode = ord(serialLogger.read()) << 8
+    return keycode + ord(serialLogger.read())
 
 
-def readNextKey(serial):
-    keycode=getKeyCode(serial)
+def readNextKey():
+    keycode=getKeyCode()
     key = keycodes[keycode]()
     print keycode
     print key
     if keycode == 3:
-        x=getKeyCode(serial)
-        y=getKeyCode(serial)
+        x=getKeyCode()
+        y=getKeyCode()
         print str(x) + "," + str(y)
 
 serial = Serial(sys.argv[1], 9600, timeout=1)
@@ -497,18 +576,24 @@ if help:
 else:
     if log:
         serialLogFile = open('serialLogFile.log', 'w')
-    serialLogger=loggingSerial(serialLogFile)
-    brltty_init(serial)
+    serialLogger=loggingSerial(serialLogFile,serial)
+    setting_manager=FCHAD_setting_manager(serialLogger)
+    brltty_init()
     print "Filling buffer."
     buff=[]
-    for i in range(settings["BUFFER_COLUMNS"][1]):
+    for i in range(setting_manager.settings["BUFFER_COLUMNS"][1]):
                                                #this is for a single row buffer
                                                #support exists for more rows.
         if i > 255: i=i-255*math.floor(i/255)
         buff.append(i)
-    brltty_fill_buffer(serial, buff)
+    print "Buffer length:"
+    print setting_manager.settings["BUFFER_COLUMNS"][1]
+    brltty_fill_buffer(buff)
     print "Buffer filled."
     print "Reading key codes from serial."
-    while True:readNextKey(serial)
-
+    while True:readNextKey()
+"""
+*/
+#if PYTHON
+"""
 #endif

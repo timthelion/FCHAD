@@ -96,4 +96,5 @@ class buffer_cursor:
       if x_pos != self._x_pos:
          self._x_pos=x_pos
       if 0 <= x_pos <=self._columns:
-         self._host.update(x_pos)
+         y_pos=0
+         self._host.update(x_pos,y_pos)

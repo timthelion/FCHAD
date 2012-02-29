@@ -27,31 +27,36 @@ import serial
 ###Evil nasty logging serial functions#############
 ###################################################
 class loggingSerial:
-    def __init__(self,serialLogFile):
+    def __init__(self,serialLogFile,serialdev):
+        self.serialdev=serialdev
         serialLogFile.write("Beginning of log file:\n")
         self.serialLogFile = serialLogFile
         
-    def serialread(self,serialdev):        
-        x=serialdev.read()
+    def read(self):
+        while not self.serialdev.inWaiting():1
+        x=self.serialdev.read()[0]
         if self.serialLogFile:
             self.serialLogFile.write("##READ##")
             self.serialLogFile.write(x)
+            self.serialLogFile.write("\n")
         return x
     
-    def serialreadline(self,serialdev):
+    def readline(self):
         try:
-            x=serialdev.readline()
+            x=self.serialdev.readline()
         except serial.serialutil.SerialException:
             print "SerialException on serialreadline..."
-            return serialreadline(serialdev)
+            return self.readline()
+        x=x.partition("\r")[0]#get rid of line returns...
         if self.serialLogFile:
             self.serialLogFile.write("##READ_LINE##")
             self.serialLogFile.write(x)
+            self.serialLogFile.write("\n")
         return x
     
-    def serialwrite(self,serialdev, x):
-        serialdev.write(x)
+    def write(self, x):
+        self.serialdev.write(x)
         if self.serialLogFile:
             self.serialLogFile.write("##WRITE##")
             self.serialLogFile.write(x)
-    
+            self.serialLogFile.write("\n")

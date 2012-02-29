@@ -20,7 +20,7 @@
  #
  # This software is maintained by Timothy Hobbs <timothyhobbs@seznam.cz>
  #
-import serial,time
+import time
 
 settings={
     "BRLTTY_DRIVER" : [lambda raw_setting: raw_setting , ""],
@@ -28,33 +28,42 @@ settings={
     "BUFFER_SIZE_MAX" : [lambda raw_setting: int(raw_setting), 0],
     "BUFFER_COLUMNS" : [lambda raw_setting: int(raw_setting), 0],
     "BUFFER_ROWS" : [lambda raw_setting: int(raw_setting), 0],
-    "DOTCOUNT" : [lambda raw_setting: int(raw_setting), 0]
-}
+    "DOTCOUNT" : [lambda raw_setting: int(raw_setting), 0],
+    "SERIAL_WAIT_TIME" : [lambda raw_setting: int(raw_setting), 0]}
 
 
-def readSettings(serialdev,serialLogger):
-    psettings={}
-    while 1:
-        setting=serialLogger.serialreadline(serialdev)
-        setting=setting.partition("\r")[0]#stupid pyserial gets not only the line, 
-                                      #but the line return as well...
-        if setting == "FCHAD":
-            break
-    while 1:
-        setting=serialLogger.serialreadline(serialdev)
-        setting=setting.partition("\r")[0]#stupid pyserial gets not only the line, 
-                                          #but the line return as well...
-        if setting == "END_HEADER": break
-        psetting=setting.partition("=")
-        if settings[psetting[0]][0](psetting[2]):
+class FCHAD_setting_manager:
+    def __init__(self,serialLogger):
+        self.settings=settings
+        self.serialLogger=serialLogger
+
+    def readSettings(self,question):
+        if question:
+            self.serialLogger.write(question)
+        while 1: #Wait for the FCHAD to introduce itself.
+            setting=self.serialLogger.readline()
+            if setting == "FCHAD":
+                break
+        print "FCHAD introduced itself.  This is good."
+        while 1:
+            setting=self.serialLogger.readline()
+            known_setting=1
+            if setting == "END_HEADER": break
+            psetting=setting.partition("=")
             try:
-                settings[psetting[0]][1]=settings[psetting[0]][0](psetting[2])
+                value = self.settings[psetting[0]][0](psetting[2])
+                if value:
+                   self.settings[psetting[0]][1]=value
             except KeyError:
                 print "Unknown setting:"+setting
-        
-def writeSettings(serialdev,serialLogger,driver, settings_to_send):
-    serialLogger.serialwrite(serialdev,driver)
-    for setting in settings_to_send:
-        serialLogger.serialwrite(serialdev,setting+"="+str(settings[setting][1])+"\n")
-        time.sleep(0.1)
-    serialLogger.serialwrite(serialdev,"END_HEADER\n")
+                known_setting=0
+            self.serialLogger.write(chr(known_setting))
+                
+            
+    def writeSettings(self,driver, settings_to_send):
+        self.serialLogger.write(driver)
+        for setting in settings_to_send:
+            self.serialLogger.write(setting+"="\
+                +str(self.settings[setting][1])+"\n")
+            self.serialLogger.read()
+        self.serialLogger.write("END_HEADER\n")

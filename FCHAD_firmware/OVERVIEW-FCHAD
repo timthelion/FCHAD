@@ -23,7 +23,6 @@ The device shoud respond with the string "FCHAD\n" and information about the
 device in a form as follows:
 
 IDENTIFY MODE(MODE 0)
-!TODO! add check summing to identify mode.
 DEVICE: 
 """
 FCHAD\n
@@ -34,10 +33,14 @@ BUFFER_ROWS_MAX=###\n
 BUFFER_COLUMNS=###\n
 BUFFER_ROWS=###\n
 DOTCOUNT=###\n
+SERIAL_WAIT_TIME=###\n
 END_HEADER\n
 """
-The brltty driver then responds by again identifying and setting any settings we wish to set, and
-exiting the mode.
+After each line, the FCHAD will wait for a single byte.  The driver should reply
+with 1 for success and 0 for some kind of error.
+
+The brltty driver then responds by again identifying and setting any settings we
+wish to set, and exiting the mode.
 DRIVER:
 """
 BRLTTY DRIVER\n
@@ -47,21 +50,26 @@ BUFFER_COLUMNS=###\n
 BUFFER_ROWS=###\n
 END_HEADER\n
 """
+The brltty driver should wait for 1 or 0 from the FCHAD after each line.
+
 Now we will have to wait.  The brltty driver should read from the device untill
 something comes.  We are waiting for the cursor driver to start up.
 
 When the cursor driver starts up, it will send the device a string 
 "\nCURSOR DRIVER - FCHAD?\n".  Then the device will print to the serial
-"WAIT 300\n".  The brltty driver should wait 300ms, or however long is specified
-by the device.
+"WAIT\n".  The brltty driver should wait the number of miliseconds specified by
+the setting SERIAL_WAIT_TIME.
 
-During this time, the same initialization sequence as before will take place
-between the cursor driver and the FCHAD device.  When this is done, the cursor
-driver will enter idle mode.
+The cursor driver must wait a few millisecconds to ensure that the brltty driver
+gets the wait command from the FCHAD.  It can then safely read then write
+settings from and to the FCHAD. When this is done, the cursor driver will wait
+the same amount of time and then enter it's idle mode sending cursor movements
+and key presses to the FCHAD.
 
-When the brltty driver is done waiting, it should again read from the serial.  
-The FCHAD will again identify itself, and the brltty driver should update any
-information internally which has changed externally.
+When the brltty driver is done waiting, it should again ask for settings from the
+FCHAD "BRLTTY DRIVER - FCHAD?" and then read the updated settings that it
+receives from the serial.  The FCHAD will again identify itself, and the brltty
+driver should update any information internally which has changed externally.
 
 When the brltty driver again recieves from the FCHAD the "END_HEADER\n"
 statement, both the brltty driver and the FCHAD enter into idle mode.
@@ -87,7 +95,7 @@ BYTE   COMMAND
 3      Set the cursor possition in the buffer -- Sent from the cursor driver
 4      Send possition -- Sent from the brltty driver
 5      Key stroke -- Sent from the cursor driver
-6      Sleep -- Don't display any charicter
+6      Display the next byte sent to serial as a braille character.
 
 SET CURSOR POSSITION
 Set cursor possition in the display.  This sets which character is being
@@ -128,6 +136,8 @@ ESCAPE SEQUENCES:
 00  0
 01  End of row.(For use in multi row buffers.)
 02  End of buffer.
+03  Request confirmation.(The FCHAD should send back a byte saying that it
+received the request.)
 
 After the End of buffer escape sequence is sent.  The brltty driver should send
 a 4 byte check sum which equals the sum of the bytes in the buffer.  If this
@@ -135,4 +145,4 @@ check sum fails(which it may if the interaction is interupted by the cursor
 driver) the FCHAD will respond with 0 if it succeeds it will respond with 1.  
 
 If an edge of the buffer is hit.  The firmware will spit out:
-"ERROR END OF BUFFER REACHED"
+"ERROR END OF BUFFER REACHED" This is not good.

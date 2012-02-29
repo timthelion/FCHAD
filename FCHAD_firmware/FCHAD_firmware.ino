@@ -19,6 +19,7 @@
  *
  * This software is maintained by Timothy Hobbs <timothyhobbs@seznam.cz>
  */
+#define DEVICE_ID         "FCHAD"
 #define DEBUG             0
 
 #define ERROR             0
@@ -28,9 +29,10 @@
 #define BUFFER_COLUMNS    4
 #define BUFFER_ROWS       5
 #define DOTCOUNT          6
-#define END_HEADER        7
+#define SERIAL_WAIT_TIME  7
+#define END_HEADER        8
 
-#define NumberOfSettings  8
+#define NumberOfSettings  9
 
 String settings[]={
   "ERROR",
@@ -40,14 +42,15 @@ String settings[]={
   "BUFFER_COLUMNS",
   "BUFFER_ROWS",
   "DOTCOUNT",
+  "SERIAL_WAIT_TIME",
   "END_HEADER"};
 
 #define dotCount 6
 const int dotPins[] = {13,11,9,7,5,3};
 
-#define serialWaitTime 3000
+#define serialWaitTime 300
 
-#define buffer_size_max 800
+#define buffer_size_max 700
 byte buffer[buffer_size_max];  //The buffer of braile bytes to be displayed.
 int  buffer_columns=0;
 int  buffer_rows=0;
@@ -59,26 +62,40 @@ String brltty_driver="";
 
 #define lineBufferLength 40 
 char current_line[lineBufferLength];
-byte charicter;
+byte character;
 
 //////////////////////////////////////////
 ///Standard functions/////////////////////
 //////////////////////////////////////////
-byte stringeq(char* string1, char* string2, char eol, byte length)
-{
-    byte i;
-    for(i=0; i < length; i++)
-    {
-        if(string1[i]==eol&&string2[i]==eol)return i;
-        #if DEBUG >= 2
-        Serial.print("string1[i]");Serial.println(string1[i]);
-        Serial.print("string2[i]");Serial.println(string2[i]);
-        #endif
-        if(string1[i]!=string2[i])return 0;
-    }
-    return i;
+
+boolean in_buffer(int xi,int yi){
+    return xi<buffer_columns&&yi<buffer_rows;
 }
 
+//////////////////////////////////////////
+///Debug//////////////////////////////////
+//////////////////////////////////////////
+void debug_message(String message,byte level)
+//For level use 1 unless your message is *really* annoying in which case use 2
+//and set DEBUG to 2. 
+{
+    if(DEBUG >= level)
+    {
+        Serial.print(message);
+    }
+}
+
+void debug_message_ln(String message,byte level)
+{
+    if(DEBUG >= level)
+    {
+        Serial.println(message);
+    }
+}
+
+///////////////////////////////////////////
+///Serial//////////////////////////////////
+///////////////////////////////////////////
 byte nextChar()
 {
   while(!Serial.available());//Block untill next char is here.
@@ -90,16 +107,15 @@ byte nextLine()
     while(!Serial.available());//Block untill next char is here.
     byte e = Serial.readBytesUntil('\n', current_line, lineBufferLength);
     current_line[e]='\0';
+    if(current_line[e-1]=='\r')current_line[e-1]='\0';
     return e;
 }
-
 void waitFor(char * line)
 {
-    byte index;
+    int index;
     do{
         nextLine();
-        index = stringeq(current_line ,line,'\0',lineBufferLength);
-    }while(!index);
+    }while(strcmp(current_line ,line));
 }
 
 void writeInt(int x){
@@ -108,36 +124,45 @@ void writeInt(int x){
 }
 
 int readInt(){
-    while(!Serial.available());//Block untill next char is here.
-    int b1 = (uint16_t)Serial.read()<<8;
-    while(!Serial.available());//Block untill next char is here.
-    int b2 = Serial.read();
+    int b1 = (uint16_t)nextChar()<<8;
+    int b2 =  nextChar();
     return b1+b2;
 }
 
 long readLong(){
-  while(!Serial.available());//Block untill next char is here.
-  long b1 = (uint32_t)Serial.read()<<24;
-  while(!Serial.available());//Block untill next char is here.
-  long b2 = (uint32_t)Serial.read()<<16;
-  while(!Serial.available());//Block untill next char is here.
-  long b3 = (uint32_t)Serial.read()<<8;
-  while(!Serial.available());//Block untill next char is here.
-  long b4 = (uint32_t)Serial.read();
+  long b1 = (uint32_t)nextChar()<<24;
+  long b2 = (uint32_t)nextChar()<<16;
+  long b3 = (uint32_t)nextChar()<<8;
+  long b4 = (uint32_t)nextChar();
   return b1+b2+b3+b4;
 }
+
+static void writeLong(long checksum)//Write a long to serial
+{
+    Serial.write((uint8_t)((checksum&0xFF000000)>>24));
+    Serial.write((uint8_t)((checksum&0x00FF0000)>>16));
+    Serial.write((uint8_t)((checksum&0x0000FF00)>>8));
+    Serial.write((uint8_t) (checksum&0x000000FF));
+}
+
 //////////////////////////////////////////
 ///Display functions//////////////////////
 //////////////////////////////////////////
-
-void displayChar(byte charicter)
+void dot_display_init()
 {
-  #if DEBUG
-  Serial.print("Displaying charicter:");Serial.println(charicter);
-  #endif  
   for(int n = 0;n<dotCount;n++)
   {
-   if((1 << n) & charicter)
+    pinMode(dotPins[n], OUTPUT);
+  }
+}
+
+void displayChar(byte character)
+{
+  debug_message("Displaying character:",1);
+    debug_message_ln(String(character),1);
+  for(int n = 0;n<dotCount;n++)
+  {
+   if((1 << n) & character)
    {
      digitalWrite(dotPins[n],HIGH);
    }else
@@ -147,11 +172,6 @@ void displayChar(byte charicter)
   }
 }
 
-boolean in_buffer(){
-    return x<buffer_columns&&y<buffer_rows;
-}
-
-
 ///////////////////////////////////////////
 ///Modes///////////////////////////////////
 ///////////////////////////////////////////
@@ -160,34 +180,28 @@ boolean in_buffer(){
 ///////////////////////////////////////////
 ///Identify mode///////////////////////////
 ///////////////////////////////////////////
-/////TODO//////////////////////////////////
-/////Add chech sums to identify mode///////
-///////////////////////////////////////////
-void identify_mode_send_settings(){
-  Serial.println("FCHAD");
-  Serial.print(settings[CURSOR_DRIVER]);
-      Serial.print("=");
-      Serial.println(cursor_driver);
- 
-  Serial.print(settings[BRLTTY_DRIVER]);
-      Serial.print("=");
-      Serial.println(brltty_driver);
-      
-  Serial.print(settings[BUFFER_SIZE_MAX]);
-      Serial.print("=");
-      Serial.println(String(buffer_size_max,DEC));
 
-  Serial.print(settings[BUFFER_COLUMNS]);
-      Serial.print("=");
-      Serial.println(String(buffer_columns,DEC));
-      
-  Serial.print(settings[BUFFER_ROWS]);
-      Serial.print("=");
-      Serial.println(String(buffer_rows,DEC));
- 
-  Serial.print(settings[DOTCOUNT]);
-      Serial.print("=");
-      Serial.println(String(dotCount,DEC));
+void identify_mode_send_setting(byte setting,String value)
+{
+    byte tries = 2;
+    do{
+        Serial.print(settings[setting]);
+        Serial.print("=");
+        Serial.println(value);
+        tries--;
+    }while(!nextChar()&&tries);
+}
+
+void identify_mode_send_settings(){
+  Serial.println(DEVICE_ID);
+  
+  identify_mode_send_setting(CURSOR_DRIVER,     cursor_driver);
+  identify_mode_send_setting(BRLTTY_DRIVER,     brltty_driver);
+  identify_mode_send_setting(BUFFER_SIZE_MAX,   String(buffer_size_max,DEC));
+  identify_mode_send_setting(BUFFER_COLUMNS,    String(buffer_columns,DEC));
+  identify_mode_send_setting(BUFFER_ROWS,       String(buffer_rows,DEC));
+  identify_mode_send_setting(DOTCOUNT,          String(dotCount,DEC));
+  identify_mode_send_setting(SERIAL_WAIT_TIME,  String(serialWaitTime,DEC));
 
   Serial.println(settings[END_HEADER]);
 }
@@ -203,8 +217,8 @@ byte identify_mode_setting_eq(String setting){
 
 byte identify_mode_which_setting(){
     for(byte i=0;i<NumberOfSettings;i++){
-        charicter=identify_mode_setting_eq(settings[i]);
-        if(charicter)
+        character=identify_mode_setting_eq(settings[i]);
+        if(character)
             return i;
     }
     return ERROR;
@@ -216,25 +230,29 @@ void identify_mode_receive_settings(char * driver){
     while(true){
         nextLine();
         setting = identify_mode_which_setting();
-        #if DEBUG >= 2
-        Serial.print("Setting:");Serial.print(setting);
-        Serial.println(current_line);
-        Serial.print("Index:");Serial.println(charicter);
-        #endif
+        debug_message("Setting:",1);debug_message(String(setting),1);
+                                    debug_message_ln(current_line,1);
+        debug_message("Index:",1);debug_message_ln(String(character),1);
         switch(setting){
-            case CURSOR_DRIVER:  cursor_driver=String(&current_line[charicter]);
-                                    break;
-            case BRLTTY_DRIVER:  brltty_driver=String(&current_line[charicter]);
-                                    break;
-            case BUFFER_COLUMNS: buffer_columns=atoi(&current_line[charicter]);
-                                    break;
-            case BUFFER_ROWS:    buffer_rows=atoi(&current_line[charicter]);
-                                    break;
-            case END_HEADER:     return;break;
-            case ERROR:         Serial.print("Unknown setting:");
-                                Serial.println(current_line);break;
+            case CURSOR_DRIVER:
+                cursor_driver=String(&current_line[character]);break;
+            case BRLTTY_DRIVER:  
+                brltty_driver=String(&current_line[character]);break;
+            case BUFFER_COLUMNS:
+                buffer_columns=atoi(&current_line[character]);break;
+            case BUFFER_ROWS:
+                buffer_rows=atoi(&current_line[character]);break;
+            case END_HEADER:
+                return;break;
+            case ERROR:   
+                    debug_message("Unknown setting:",1);
+                        debug_message_ln(current_line,1);
+                    if(DEBUG)break;
+                    Serial.write(byte(0));
+                    break;
             default:;
         }
+        if(!setting==ERROR)Serial.write(byte(1));
     }
 }
 
@@ -246,125 +264,115 @@ void identify_mode_cleanup(){
 }
 
 void identify_mode(){
-    Serial.println("FCHAD");
+    Serial.println(DEVICE_ID);
     waitFor("BRLTTY DRIVER - FCHAD?");
     identify_mode_send_settings();
     identify_mode_receive_settings("BRLTTY DRIVER");
+    
     waitFor("CURSOR DRIVER - FCHAD?");
-    Serial.print("WAIT ");Serial.println(serialWaitTime);
+    Serial.println("WAIT");
+    if(Serial.available())Serial.println("Unexpected input.");
     identify_mode_send_settings();
     identify_mode_receive_settings("CURSOR DRIVER");
-    delay(serialWaitTime/10);
+    
+    delay(serialWaitTime);
+    
+    waitFor("BRLTTY DRIVER - FCHAD?");    
     identify_mode_send_settings();
+    
     identify_mode_cleanup();
-  }
+    displayChar(byte(255));//Just to show that all the motors work and we finished
+    //the init sequence with some degree of success.
+}
 
 ////////////////////////////////////////////
 ///Idle mode////////////////////////////////
 ////////////////////////////////////////////
 void idle_mode_next(){
-   charicter = nextChar();
-   switch(charicter){
+   character = nextChar();
+   switch(character){
       case  2:read_buffer_mode();break;
       case  3:set_cursor_pos();break;
       case  4:send_cursor_pos();break;
       case  5:receive_key();break;
-      case  6:displayChar(0);break;//Sleep
+      case  6:displayChar(nextChar());break;
   }
 }
 
 ///////////////////////////////////////////
 ///READ BUFFER MODE////////////////////////
 ///////////////////////////////////////////
-void read_buffer_clear_eol()
-{
-    x++;
-    while(in_buffer())
+void read_buffer_clear_eol(int xi,int yi)
+{//Fill the rest of the row with 0s.
+    xi++;
+    while(in_buffer(xi,yi))
     {
-        buffer[x+y*buffer_columns]=0;
-        x++;
+        buffer[xi+yi*buffer_columns]=0;
+        xi++;
     }
 }
 
-void read_buffer_clear_eob()
-{
-    while(in_buffer())
+void read_buffer_clear_eob(int xi, int yi)
+{//Fill ther rest of the buffer with 0s.
+    while(in_buffer(xi,yi))
     {
-        read_buffer_clear_eol();
-        y++;
-        x=0;
+        read_buffer_clear_eol(xi,yi);
+        yi++;
+        xi=0;
     }
 }
 
-void read_buffer_die(String message){
-    Serial.println(message);
-}
-
-long read_buffer_read_check_sum(){
-  return readLong();
+#define readChecksum  readLong
+#define writeChecksum writeLong
+void process_eob(int xi, int yi, long checksum_fchad) 
+{
+    long checksum_brltty;
+    read_buffer_clear_eob(xi,yi);
+    debug_message_ln("End of buffer.",1);
+    writeChecksum(checksum_fchad);
+    checksum_brltty=readChecksum();
+    if(checksum_fchad!=checksum_brltty){
+    //when check sum fails try again.
+        debug_message_ln("CHECK SUM FAILED",1);
+        debug_message(String(checksum_fchad),1);debug_message_ln("!=",1);
+        debug_message_ln(String(checksum_brltty),1);
+        read_buffer_mode();
+    }
 }
 
 void read_buffer_mode(){
-  long check_sum_fchad=0;
-  long check_sum_brltty;
-  x=0;
-  y=0;
-  #if DEBUG
-  Serial.println("Entering read buffer mode.");
-  #endif
+  long checksum_fchad=0;
+  debug_message_ln("Entering read buffer mode.",1);
+  int xi=0;
+  int yi=0;
   while(true)
   {
-    charicter = nextChar();
-    check_sum_fchad+=charicter;
-    if(charicter==0)
+    character = nextChar();
+    checksum_fchad+=character;
+    if(character==0)
     {
-      charicter=nextChar();
-      switch(charicter){
-        //case 0: //0
+      character=nextChar();
+      switch(character){
+        case 0: break; //0
         case 1: //EOL
-            read_buffer_clear_eol();
-            x=0;
-            y++;
-            if(!in_buffer()){
-                #if DEBUG
-                read_buffer_die("ERROR END OF BUFFER REACHED WHILE GOING TO NEXT LINE");
-                #endif
-                return;
-            }
+            read_buffer_clear_eol(xi,yi);
+            xi=0;yi++;
+            if(!in_buffer(xi,yi)){
+debug_message_ln("ERROR END OF BUFFER REACHED WHILE GOING TO NEXT LINE",1);
+            return;}
             break;
-        case 2: //EOB
-            read_buffer_clear_eob();
-            #if DEBUG
-            Serial.println("End of buffer.");
-            #endif
-            check_sum_brltty=read_buffer_read_check_sum();
-            if(check_sum_fchad!=check_sum_brltty){
-            //when check sum fails try again.
-              #if DEBUG
-              Serial.print("CHECK SUM FAILED");
-              Serial.print(String(check_sum_fchad));Serial.print("!=");
-              Serial.println(String(check_sum_brltty));
-              #endif
-              Serial.write(byte(0));
-              read_buffer_mode();
-            }else Serial.write(byte(1));
-            return;
-            break;
+        case 2: process_eob(xi,yi,checksum_fchad); return;
+        case 3: Serial.write(byte(57));break;
         default:;
       }
     }
-    if(!in_buffer()){
-        #if DEBUG
-        read_buffer_die("ERROR END OF BUFFER REACHED WHILE WRITTING TO BUFFER");
-        #endif
-        return;
-    }
-                                
-    buffer[x+y*buffer_columns]=charicter;
-    #if DEBUG
-    Serial.print("Adding charicter ");Serial.println(String(charicter));
-    #endif
-    x++;
+    //if(!in_buffer(xi,yi)){
+    // debug_message_ln("ERROR END OF BUFFER REACHED WHILE WRITTING TO BUFFER",1);
+    // return;
+    //}
+    buffer[xi+yi*buffer_columns]=character;
+    debug_message("Adding character ",1);debug_message_ln(String(character),1);
+    xi++;
   }
 }
 
@@ -374,18 +382,14 @@ void read_buffer_mode(){
 void set_cursor_pos(){
     x=readInt();
     y=readInt();
-    #if DEBUG
-    Serial.print("CURSOR POSSITION SET TO:");Serial.print(String(x));
-                                             Serial.print(",");
-                                             Serial.println(String(y));
-    #endif
-    if(in_buffer())
+    debug_message("CURSOR POSSITION SET TO:",1);
+        debug_message(String(x),1);
+        debug_message(",",1);
+        debug_message_ln(String(y),1);
+    if(in_buffer(x,y))
         displayChar(buffer[x+y*buffer_columns]);
     else{x=0;y=0;
-        #if DEBUG
-        Serial.println("CURSOR ROUTED TO INVALID REGION WITHIN BUFFER.");
-        #endif
-    }
+        debug_message("CURSOR ROUTED TO INVALID REGION WITHIN BUFFER.",1);}
 }
 
 void send_cursor_pos(){
@@ -394,10 +398,8 @@ void send_cursor_pos(){
 }
 
 void receive_key(){
-    while(!Serial.available());//Block untill next char is here.
-    Serial.write(Serial.read());
-    while(!Serial.available());//Block untill next char is here.
-    Serial.write(Serial.read());
+    Serial.write(nextChar());
+    Serial.write(nextChar());
 }
 
 //////////////////////////////////////////////
@@ -408,10 +410,7 @@ void setup()
   // initialize the serial communication:
   Serial.begin(9600);
   // initialize the the pins as outputs:
-  for(int n = 0;n<dotCount;n++)
-  {
-    pinMode(dotPins[n], OUTPUT);
-  }
+  dot_display_init();
   identify_mode();
 }
 
