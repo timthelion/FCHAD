@@ -125,7 +125,7 @@ void writeInt(int x){
 
 int readInt(){
     int b1 = (uint16_t)nextChar()<<8;
-    int b2 =  nextChar();
+    int b2 =  (uint16_t)nextChar();
     return b1+b2;
 }
 
@@ -273,7 +273,7 @@ void identify_mode(){
     
     waitFor("CURSOR DRIVER - FCHAD?");
     Serial.println("WAIT");
-    if(Serial.available())Serial.println("Unexpected input.");
+    //if(Serial.available())Serial.println("Unexpected input.");
     identify_mode_send_settings();
     identify_mode_receive_settings("CURSOR DRIVER");
     
@@ -335,23 +335,22 @@ void process_eob(int xi, int yi, long checksum_fchad)
     checksum_brltty=readChecksum();//write, but that hangs.  I honestly don't
     //why.  It doesn't matter though, really.
     if(checksum_fchad!=checksum_brltty){
-    //when check sum fails try again.
         debug_message_ln("CHECK SUM FAILED",1);
         debug_message(String(checksum_fchad),1);debug_message_ln("!=",1);
         debug_message_ln(String(checksum_brltty),1);
-        read_buffer_mode();
     }
 }
 
 void read_buffer_mode(){
+  Serial.write(2);
   long checksum_fchad=0;
   debug_message_ln("Entering read buffer mode.",1);
   int xi=0;
   int yi=0;
+  int bytes_read_since_last_check=0;
   while(true)
   {
     character = nextChar();
-    checksum_fchad+=character;
     if(character==0)
     {
       character=nextChar();
@@ -365,7 +364,13 @@ debug_message_ln("ERROR END OF BUFFER REACHED WHILE GOING TO NEXT LINE",1);
             return;}
             break;
         case 2: process_eob(xi,yi,checksum_fchad); return;
-        case 3: Serial.write(byte(57));break;
+        case 3: writeInt(bytes_read_since_last_check);
+                bytes_read_since_last_check=0;
+                readInt();
+                //if(bytes_read_since_last_check!=readInt())return;
+                character = nextChar();
+                break;
+        case 4: return;//Just go back to idle mode.
         default:;
       }
     }
@@ -374,6 +379,9 @@ debug_message_ln("ERROR END OF BUFFER REACHED WHILE GOING TO NEXT LINE",1);
     // return;
     //}
     buffer[xi+yi*buffer_columns]=character;
+    Serial.write(character);
+    checksum_fchad+=character;
+    bytes_read_since_last_check ++;
     debug_message("Adding character ",1);debug_message_ln(String(character),1);
     xi++;
   }

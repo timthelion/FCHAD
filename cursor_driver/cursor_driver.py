@@ -39,12 +39,13 @@ class braille_reader_host:
 
         self._setting_manager=FCHAD_setting_manager(serialLogger)
         self._setting_manager.settings["CURSOR_DRIVER"][1]="pythonXlib"
-        self._columns            = 6
+        self._columns            = 20
         self._setting_manager.settings["BUFFER_COLUMNS"][1]  = self._columns
         self._rows               = 1
         self._setting_manager.settings["BUFFER_ROWS"][1]  = self._rows
-
+        print "Initializing..."
         self.serial_init()
+        print "Initialization successfull."
         time.sleep(self._setting_manager.settings["SERIAL_WAIT_TIME"][1]/100.0)
         if nap:    
             self.nap()
@@ -103,4 +104,3 @@ else:
         serialLogFile = open('serialLogFile.log', 'w')
     serialLogger=loggingSerial(serialLogFile,serial)
     brh = braille_reader_host(serial)
-		

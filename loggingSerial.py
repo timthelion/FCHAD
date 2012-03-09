@@ -34,7 +34,12 @@ class loggingSerial:
         
     def read(self):
         while not self.serialdev.inWaiting():1
-        x=self.serialdev.read()[0]
+        byte_string = self.serialdev.read()
+        if byte_string:
+            x=byte_string[0]
+        else:
+            print "Hmm, seems we made a mistake, and no bytes where availible, trying again... "
+            return self.read()
         if self.serialLogFile:
             self.serialLogFile.write("##READ##")
             self.serialLogFile.write(x)
