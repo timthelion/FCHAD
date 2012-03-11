@@ -19,31 +19,12 @@
  *
  * This software is maintained by Timothy Hobbs <timothyhobbs@seznam.cz>
  */
-#define DEVICE_ID         "FCHAD"
 #define DEBUG             0
 
-#define ERROR             0
-#define CURSOR_DRIVER     1
-#define BRLTTY_DRIVER     2
-#define BUFFER_SIZE_MAX   3
-#define BUFFER_COLUMNS    4
-#define BUFFER_ROWS       5
-#define DOTCOUNT          6
-#define SERIAL_WAIT_TIME  7
-#define END_HEADER        8
+#define DEVICE_ID         "FCHAD"
+#include "FCHAD_settings.h"
 
-#define NumberOfSettings  9
-
-String settings[]={
-  "ERROR",
-  "CURSOR_DRIVER",
-  "BRLTTY_DRIVER",
-  "BUFFER_SIZE_MAX",
-  "BUFFER_COLUMNS",
-  "BUFFER_ROWS",
-  "DOTCOUNT",
-  "SERIAL_WAIT_TIME",
-  "END_HEADER"};
+#include "FCHAD_codes.h"
 
 #define dotCount 6
 const int dotPins[] = {13,11,9,7,5,3};
@@ -110,6 +91,7 @@ byte nextLine()
     if(current_line[e-1]=='\r')current_line[e-1]='\0';
     return e;
 }
+
 void waitFor(char * line)
 {
     int index;
@@ -118,15 +100,36 @@ void waitFor(char * line)
     }while(strcmp(current_line ,line));
 }
 
+void writeByteSide(unsigned char leftRight, unsigned char character){
+    if(leftRight==LEFT)
+    {
+        Serial.write(character&LEFT);
+        Serial.write(character&RIGHT<<4);
+    }else{
+        Serial.write(character&RIGHT);
+        Serial.write(character&LEFT>>4);
+    }
+    
+}
+
+void writeIntSide(unsigned char leftRight, int i){
+    writeByteSide(leftRight, (uint8_t)((x & 0xFF00) >> 8) ) ;
+    writeByteSide(leftRight, (uint8_t)x & 0x00FF ) ;    
+}
+
 void writeInt(int x){
     Serial.write( (uint8_t)((x & 0xFF00) >> 8) ) ;
     Serial.write( (uint8_t)x & 0x00FF ) ;
 }
 
-int readInt(){
-    int b1 = (uint16_t)nextChar()<<8;
-    int b2 =  (uint16_t)nextChar();
+int makeInt(unsigned char b1, unsigned char b2){
+    b1 = (uint16_t)b1<<8;
+    b2 =  (uint16_t)b2;
     return b1+b2;
+}
+
+int readInt(){
+    makeInt(nextChar(),nextChar());
 }
 
 long readLong(){
@@ -137,12 +140,12 @@ long readLong(){
   return b1+b2+b3+b4;
 }
 
-static void writeLong(long checksum)//Write a long to serial
+static void writeLong(long mylong)//Write a long to serial
 {
-    Serial.write((uint8_t)((checksum&0xFF000000)>>24));
-    Serial.write((uint8_t)((checksum&0x00FF0000)>>16));
-    Serial.write((uint8_t)((checksum&0x0000FF00)>>8));
-    Serial.write((uint8_t) (checksum&0x000000FF));
+    Serial.write((uint8_t)((mylong&0xFF000000)>>24));
+    Serial.write((uint8_t)((mylong&0x00FF0000)>>16));
+    Serial.write((uint8_t)((mylong&0x0000FF00)>>8));
+    Serial.write((uint8_t) (mylong&0x000000FF));
 }
 
 //////////////////////////////////////////
@@ -180,9 +183,7 @@ void displayChar(byte character)
 ///////////////////////////////////////////
 ///Identify mode///////////////////////////
 ///////////////////////////////////////////
-
-void identify_mode_send_setting(byte setting,String value)
-{
+void identify_mode_send_setting(byte setting,String value){
     byte tries = 2;
     do{
         Serial.print(settings[setting]);
@@ -290,127 +291,250 @@ void identify_mode(){
 ////////////////////////////////////////////
 ///Idle mode////////////////////////////////
 ////////////////////////////////////////////
+/*
+Bytes sent from the cursor driver, should be split into two bytes, using only
+the rightmost 4 bits of each byte.  Bytes sent from the brltty driver should use
+the leftmost 4 bits.   For bytes equal to 0, we use escape sequences.  To send
+a half byte 0 on the right channel send RIGHT_ESCAPE and then RIGHT_ESCAPE_ZERO.
+To send a half byte on the right channel equal to RIGHT_ESCAPE send RIGHT_ESCAPE
+twice.
+
+This channel splitting follows through in read/write buffer mode and other post
+introduction interactions.  Data that comes from the brltty should always be on
+the left, where-as data from the cursor driver should always be on the right. 
+*/
+
+unsigned char left_char_in_waiting  = 0;
+unsigned char right_char_in_waiting = 0;
+
+static void read_buffer_mode_process_char    (unsigned char character);
+static void set_cursor_pos_mode_process_char (unsigned char character);
+static void recieve_key_mode_process_char    (unsigned char character);
+
+unsigned char mode_brltty=IDLE_MODE;
+unsigned char mode_cursor=IDLE_MODE;
+
+bool left_escape_mode  = 0;
+bool rigth_escape_mode = 0;
+
 void idle_mode_next(){
-   character = nextChar();
-   switch(character){
-      case  2:read_buffer_mode();break;
-      case  3:set_cursor_pos();break;
-      case  4:send_cursor_pos();break;
-      case  5:receive_key();break;
-      case  6:displayChar(nextChar());break;
-  }
+    char left_escape  = 0;
+    char right_escpae = 0;
+    char left = character & LEFT;
+    character=nextChar();
+    if(left_escape_mode){
+        switch(character){
+            case LEFT_ESCAPE_ZERO:
+                character=0;
+                left_escape_mode==0;
+                break;
+            case LEFT_ESCAPE_ESCAPE:
+                character=LEFT_ESCAPE_ESCAPE;
+                left_escape_mode=0;
+            default:;
+        }
+    }else{
+        if(character==LEFT_ESCAPE){
+            left_escape_mode=1;
+            return;
+        }
+    }
+    if(right_escape_mode){
+        switch(character){
+            case RIGHT_ESCAPE_ZERO:
+                character=0;
+                right_escape_mode==0;
+                break;
+            case RIGHT_ESCAPE_ESCAPE:
+                character=RIGHT_ESCAPE_ESCAPE;
+                right_escape_mode=0;
+            default:;
+        }
+    }else{
+        if(character==RIGHT_ESCAPE){
+            right_escape_mode=1;
+            return;
+        }
+    }
+    if(left)//Left char, from BRLTTY driver.
+    {
+        if(left_char_waiting)
+        {
+            character=left_char_waiting+(character>>4);
+            left_char_waiting=0;
+            switch(mode_brltty){
+                case READ_WRITE_BUFFER_MODE:
+                    read_buffer_mode_process_char(character);
+                    break;
+                case DISPLAY_CHAR_MODE:
+                    displayChar(character);
+                case IDLE_MODE:
+                default:
+                    switch(character){
+                        case  READ_WRITE_BUFFER_MODE       : 
+                            read_buffer_mode     =1; break;
+                        case  SEND_RECIEVE_CURSOR_POS_MODE : 
+                            send_cursor_pos(); break;
+                        case  DISPLAY_CHAR_MODE            : 
+                            display_char_mode    =1; break;
+                    }
+                    break;
+            }
+        }else{
+            left_char_waiting=character;
+        }
+    }else{//Right char, from cursor driver.
+        if(right_char_in_waiting){
+            character=right_char_waiting+(character<<4);
+            right_char_waiting=0;        
+            switch(mode_cursor){
+                case SET_CURSOR_POS_MODE:
+                    set_cursor_pos_mode_process_char(character);
+                    break;
+                case SEND_RECIEVE_KEYCODE_MODE:
+                    recieve_key_mode_process_char(character);
+                    break;
+                case IDLE_MODE:
+                default:
+                    switch(character){
+                        case  SET_CURSOR_POS_MODE          : 
+                            set_cursor_pos_mode=1; break;
+                        case  SEND_RECIEVE_KEYCODE_MODE    : 
+                            receive_key_mode=1;    break;
+                    }
+                    break;
+            }
+        }else{
+            right_char_in_waiting=character;
+        }
+    }
 }
 
 ///////////////////////////////////////////
 ///READ BUFFER MODE////////////////////////
 ///////////////////////////////////////////
-void read_buffer_clear_eol(int xi,int yi)
-{//Fill the rest of the row with 0s.
+/*
+Bytes sent on the left channel while read buffer mode is activated will be
+processed by this code.  Every byte recieved which is to be written to buffer
+will be echo'd back to the brltty driver on the left channel.  The right channel
+is reserved for keycodes which may be passed through from the cursor driver.
+*/
+
+static int buffer_index(int x, int y){return x+y*buffer_columns;}
+void read_buffer_clear_eol(int xi,int yi){//Fill the rest of the row with 0s.
     xi++;
-    while(in_buffer(xi,yi))
-    {
-        buffer[xi+yi*buffer_columns]=0;
+    while(in_buffer(xi,yi)){
+        buffer[buffer_index(xi,yi)]=0;
         xi++;
     }
 }
 
-void read_buffer_clear_eob(int xi, int yi)
-{//Fill ther rest of the buffer with 0s.
-    while(in_buffer(xi,yi))
-    {
+void read_buffer_clear_eob(int xi, int yi){
+    while(in_buffer(xi,yi)){//Fill ther rest of the buffer with 0s.
         read_buffer_clear_eol(xi,yi);
         yi++;
         xi=0;
     }
 }
 
-#define readChecksum  readLong
-#define writeChecksum writeLong
-void process_eob(int xi, int yi, long checksum_fchad) 
-{
-    long checksum_brltty;
-    read_buffer_clear_eob(xi,yi);
-    debug_message_ln("End of buffer.",1);
-    writeChecksum(checksum_fchad);//This should be flipped.  We should read then
-    checksum_brltty=readChecksum();//write, but that hangs.  I honestly don't
-    //why.  It doesn't matter though, really.
-    if(checksum_fchad!=checksum_brltty){
-        debug_message_ln("CHECK SUM FAILED",1);
-        debug_message(String(checksum_fchad),1);debug_message_ln("!=",1);
-        debug_message_ln(String(checksum_brltty),1);
-    }
+void add_character_to_buffer(unsigned char character){
+    writeByteSide(LEFT,character);//Write buffer mode confirmation characters
+    //are send left sided to brltty.  Keycodes are sent rigth sided.
+    buffer[buffer_index(read_buffer_mode_x,
+                        read_buffer_mode_y)]=character;
+    read_buffer_mode_x++;
 }
 
-void read_buffer_mode(){
-  Serial.write(2);
-  long checksum_fchad=0;
-  debug_message_ln("Entering read buffer mode.",1);
-  int xi=0;
-  int yi=0;
-  int bytes_read_since_last_check=0;
-  while(true)
-  {
-    character = nextChar();
-    if(character==0)
-    {
-      character=nextChar();
-      switch(character){
-        case 0: break; //0
-        case 1: //EOL
-            read_buffer_clear_eol(xi,yi);
-            xi=0;yi++;
-            if(!in_buffer(xi,yi)){
-debug_message_ln("ERROR END OF BUFFER REACHED WHILE GOING TO NEXT LINE",1);
-            return;}
+#define READ_BUFFER_MODE_STAGE_IDENTIFY   0
+#define READ_BUFFER_MODE_STAGE_READ_BYTES 1
+#define READ_BUFFER_MODE_STAGE_ESCAPE     2
+int read_buffer_mode_stage = 0;
+/*
+There is so much I've learned to hate about "traditional" C.  I have seen many
+projects that would have put these definitions in a separate <.h> file, and then
+included that file at the top of the <.c>.  I find this only adds complications
+in finding such definitions.  It reduces clairity and adds nothing.  If one is
+to share such definitions.  The <.h> should atleast be included near the place
+that they are used!
+*/
+
+int read_buffer_mode_x = 0;
+int read_buffer_mode_y = 0;
+
+static void read_buffer_mode_process_char    (unsigned char character)
+{
+    switch(read_buffer_mode_stage){
+        case READ_BUFFER_MODE_STAGE_IDENTIFY:
+            Serial.write(READ_WRITE_BUFFER_MODE);
+            read_buffer_mode_stage++;
+            //That time, when you actually don't put a break statement in your
+            //switch.  Almost as special as the day I'll finally use integral
+            //calculus outside of school :)
+        case READ_BUFFER_MODE_STAGE_READ_BYTES:
+            if(character == BUFFER_ESCAPE){
+                read_buffer_mode_stage++;return;
+            }
+            add_character_to_buffer(character);
+            break;//OMG, I got so excited about not having to include this on
+            //the last case, I almost forgot it this time :O ..  That could have
+            //caused some major debugging pain!
+        case READ_BUFFER_MODE_STAGE_ESCAPE:
+            switch(character){
+                case BUFFER_ESCAPE:
+                    add_character_to_buffer(BUFFER_ESCAPE);
+                    read_buffer_mode_stage=READ_BUFFER_MODE_STAGE_READ_BYTES;
+                    break;
+                case BUFFER_EOL:
+                    read_buffer_clear_eol(read_buffer_mode_x,read_buffer_mode_y);
+                    read_buffer_mode_x=0;
+                    read_buffer_mode_y++;
+                    read_buffer_mode_stage=READ_BUFFER_MODE_STAGE_READ_BYTES;
+                    if(in_buffer(read_buffer_mode_x,read_buffer_mode_y))break;
+                    //EVIL ^_^
+                case BUFFER_EOB:
+                    read_buffer_clear_eob(read_buffer_mode_x,read_buffer_mode_y);
+                    read_buffer_mode_x=0;
+                    read_buffer_mode_y=0;
+                    mode_brltty=IDLE_MODE;
+                    read_buffer_mode_stage=READ_BUFFER_MODE_STAGE_IDENTIFY;
+                    break;
+                default;
+            }
             break;
-        case 2: process_eob(xi,yi,checksum_fchad); return;
-        case 3: writeInt(bytes_read_since_last_check);
-                bytes_read_since_last_check=0;
-                readInt();
-                //if(bytes_read_since_last_check!=readInt())return;
-                character = nextChar();
-                break;
-        case 4: return;//Just go back to idle mode.
-        default:;
-      }
     }
-    //if(!in_buffer(xi,yi)){
-    // debug_message_ln("ERROR END OF BUFFER REACHED WHILE WRITTING TO BUFFER",1);
-    // return;
-    //}
-    buffer[xi+yi*buffer_columns]=character;
-    Serial.write(character);
-    checksum_fchad+=character;
-    bytes_read_since_last_check ++;
-    debug_message("Adding character ",1);debug_message_ln(String(character),1);
-    xi++;
-  }
 }
 
 //////////////////////////////////////////////
 ////Mini Modes////////////////////////////////
 //////////////////////////////////////////////
-void set_cursor_pos(){
-    x=readInt();
-    y=readInt();
-    debug_message("CURSOR POSSITION SET TO:",1);
-        debug_message(String(x),1);
-        debug_message(",",1);
-        debug_message_ln(String(y),1);
-    if(in_buffer(x,y))
-        displayChar(buffer[x+y*buffer_columns]);
-    else{x=0;y=0;
-        debug_message("CURSOR ROUTED TO INVALID REGION WITHIN BUFFER.",1);}
+unsigned char cursor_pos_byte = 0;
+unsigned char cursor_pos_bytes[4];
+static void set_cursor_pos_mode_process_char (unsigned char character){
+    if(cursor_pos_byte>=4){
+        x=makeInt(cursor_pos_bytes[0],cursor_pos_bytes[1]);
+        y=makeInt(cursor_pos_bytes[2],cursor_pos_bytes[3]);
+        displayChar(buffer[buffer_index(x,y)]);
+        cursor_pos_byte = 0;
+        mode_cursor = IDLE_MODE;
+    }else{
+        cursor_pos_bytes[cursor_pos_byte]=character;
+        cursor_pos_byte++;
+    }
 }
 
 void send_cursor_pos(){
-    writeInt(x);
-    writeInt(y);
+    writeIntSide(RIGHT,x);
+    writeIntSide(RIGHT,y);
 }
 
-void receive_key(){
-    Serial.write(nextChar());
-    Serial.write(nextChar());
+unsigned char receive_key_byte=0;
+static void recieve_key_mode_process_char    (unsigned char character){
+    writeByteSide(RIGHT,character);
+    receive_key_byte++;
+    if(receive_key_byte>=2){
+        receive_key_byte=0;
+        mode_cursor=IDLE_MODE;
+    }
 }
 
 //////////////////////////////////////////////
