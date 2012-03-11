@@ -292,21 +292,10 @@ void identify_mode(){
 ///Idle mode////////////////////////////////
 ////////////////////////////////////////////
 /*
-Bytes sent from the cursor driver, should be split into two bytes, using only
-the rightmost 4 bits of each byte.  Bytes sent from the brltty driver should use
-the leftmost 4 bits.   For bytes equal to 0, we use escape sequences.  To send
-a half byte 0 on the right channel send RIGHT_ESCAPE and then RIGHT_ESCAPE_ZERO.
-To send a half byte on the right channel equal to RIGHT_ESCAPE send RIGHT_ESCAPE
-twice.
-
-This channel splitting follows through in read/write buffer mode and other post
-introduction interactions.  Data that comes from the brltty should always be on
-the left, where-as data from the cursor driver should always be on the right. 
+The first bit of each byte recieved marks the channel(sender).
+1 = LEFT  = from brltty
+0 = RIGHT = from cursor driver
 */
-
-unsigned char left_char_in_waiting  = 0;
-unsigned char right_char_in_waiting = 0;
-
 static void read_buffer_mode_process_char    (unsigned char character);
 static void set_cursor_pos_mode_process_char (unsigned char character);
 static void recieve_key_mode_process_char    (unsigned char character);
@@ -314,102 +303,82 @@ static void recieve_key_mode_process_char    (unsigned char character);
 unsigned char mode_brltty=IDLE_MODE;
 unsigned char mode_cursor=IDLE_MODE;
 
-bool left_escape_mode  = 0;
-bool rigth_escape_mode = 0;
 
-void idle_mode_next(){
-    char left_escape  = 0;
-    char right_escpae = 0;
-    char left = character & LEFT;
-    character=nextChar();
-    if(left_escape_mode){
-        switch(character){
-            case LEFT_ESCAPE_ZERO:
-                character=0;
-                left_escape_mode==0;
-                break;
-            case LEFT_ESCAPE_ESCAPE:
-                character=LEFT_ESCAPE_ESCAPE;
-                left_escape_mode=0;
-            default:;
-        }
-    }else{
-        if(character==LEFT_ESCAPE){
-            left_escape_mode=1;
-            return;
-        }
-    }
-    if(right_escape_mode){
-        switch(character){
-            case RIGHT_ESCAPE_ZERO:
-                character=0;
-                right_escape_mode==0;
-                break;
-            case RIGHT_ESCAPE_ESCAPE:
-                character=RIGHT_ESCAPE_ESCAPE;
-                right_escape_mode=0;
-            default:;
-        }
-    }else{
-        if(character==RIGHT_ESCAPE){
-            right_escape_mode=1;
-            return;
-        }
-    }
-    if(left)//Left char, from BRLTTY driver.
+bool          left_in_waiting       = 0;
+bool          right_in_waiting      = 0;
+unsigned char left_char_in_waiting  = 0;
+unsigned char right_char_in_waiting = 0;
+
+void process_char_left  (unsigned char character);
+void process_char_right (unsigned char character);
+
+void process_char(unsigned char character){//Written like this, so as to be able
+//to copy paste this code directly between firmware and brltty driver.
+    if(character & LEFT)
     {
-        if(left_char_waiting)
+        if(left_in_waiting)
         {
-            character=left_char_waiting+(character>>4);
-            left_char_waiting=0;
-            switch(mode_brltty){
-                case READ_WRITE_BUFFER_MODE:
-                    read_buffer_mode_process_char(character);
-                    break;
-                case DISPLAY_CHAR_MODE:
-                    displayChar(character);
-                case IDLE_MODE:
-                default:
-                    switch(character){
-                        case  READ_WRITE_BUFFER_MODE       : 
-                            read_buffer_mode     =1; break;
-                        case  SEND_RECIEVE_CURSOR_POS_MODE : 
-                            send_cursor_pos(); break;
-                        case  DISPLAY_CHAR_MODE            : 
-                            display_char_mode    =1; break;
-                    }
-                    break;
-            }
+            character=left_char_in_waiting+(character&0b01111111);
+            left_char_in_waiting=0;
+            left_in_waiting=0;
+            process_char_left(character);
         }else{
-            left_char_waiting=character;
+            left_char_in_waiting=(character&0b01111111)<<7;
+            left_in_waiting=1;
         }
-    }else{//Right char, from cursor driver.
-        if(right_char_in_waiting){
-            character=right_char_waiting+(character<<4);
-            right_char_waiting=0;        
-            switch(mode_cursor){
-                case SET_CURSOR_POS_MODE:
-                    set_cursor_pos_mode_process_char(character);
-                    break;
-                case SEND_RECIEVE_KEYCODE_MODE:
-                    recieve_key_mode_process_char(character);
-                    break;
-                case IDLE_MODE:
-                default:
-                    switch(character){
-                        case  SET_CURSOR_POS_MODE          : 
-                            set_cursor_pos_mode=1; break;
-                        case  SEND_RECIEVE_KEYCODE_MODE    : 
-                            receive_key_mode=1;    break;
-                    }
-                    break;
-            }
+    }else{
+        if(right_in_waiting){
+            character=right_char_in_waiting+character;
+            right_char_in_waiting=0;
+            rigth_in_waiting=0;
+            process_char_right(character);
         }else{
-            right_char_in_waiting=character;
+            right_char_in_waiting=character<<7;
+            right_in_waiting=1;
         }
     }
 }
 
+void process_char_left(unsigned char character){
+        switch(mode_brltty){
+        case READ_WRITE_BUFFER_MODE:
+            read_buffer_mode_process_char(character);
+            break;
+        case DISPLAY_CHAR_MODE:
+            displayChar(character);
+        case IDLE_MODE:
+        default:
+            switch(character){
+                case  READ_WRITE_BUFFER_MODE       : 
+                    read_buffer_mode     =1; break;
+                case  SEND_RECIEVE_CURSOR_POS_MODE : 
+                    send_cursor_pos(); break;
+                case  DISPLAY_CHAR_MODE            : 
+                    display_char_mode    =1; break;
+            }
+            break;
+    }
+}
+
+void process_char_right(unsigned char character){
+    switch(mode_cursor){
+    case SET_CURSOR_POS_MODE:
+        set_cursor_pos_mode_process_char(character);
+        break;
+    case SEND_RECIEVE_KEYCODE_MODE:
+        recieve_key_mode_process_char(character);
+        break;
+    case IDLE_MODE:
+    default:
+        switch(character){
+            case  SET_CURSOR_POS_MODE          : 
+                set_cursor_pos_mode=1; break;
+            case  SEND_RECIEVE_KEYCODE_MODE    : 
+                receive_key_mode=1;    break;
+        }
+        break;
+    }
+}
 ///////////////////////////////////////////
 ///READ BUFFER MODE////////////////////////
 ///////////////////////////////////////////
@@ -550,5 +519,5 @@ void setup()
 }
 
 void loop() {
-    idle_mode_next();
+    process_char(nextChar());
 }

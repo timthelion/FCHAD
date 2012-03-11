@@ -58,8 +58,8 @@ static unsigned char *previousCells = NULL; /* previous pattern displayed */
 static GioEndpoint *gioEndpoint = NULL;
 int serial_wait_time = 0;
 
-void Serial_init(const char *identifier)
-{//COPY PASTE from connectResource() in the Voyager driver...
+void Serial_init(const char *identifier){
+//COPY PASTE from connectResource() in the Voyager driver...
     GioDescriptor descriptor;
     gioInitializeDescriptor(&descriptor);
 
@@ -78,8 +78,7 @@ void Serial_init(const char *identifier)
 }
 
 
-void Serial_print(char * line)
-{
+void Serial_print(char * line){
     #if SERIAL
     int size = strlen(line);
     gioWriteData(gioEndpoint, line, size);
@@ -88,14 +87,12 @@ void Serial_print(char * line)
     #endif
 }
 
-void Serial_println(char * line)
-{
+void Serial_println(char * line){
     Serial_print(line);
     Serial_print("\n");
 }
 
-unsigned char Serial_read()
-{
+unsigned char Serial_read(){
     #if SERIAL
     while(!gioAwaitInput(gioEndpoint,0));
     unsigned char byte;
@@ -111,8 +108,115 @@ unsigned char Serial_read()
     //Read one byte from serial.
 }
 
-void Serial_write(unsigned char byte)
-{
+
+#define BYTE_BUFFER_SIZE 100
+char left_buffer  [BYTE_BUFFER_SIZE];//Circular buffers.
+char rigth_buffer [BYTE_BUFFER_SIZE];
+
+int left_buffer_index  = 0;//Index in circular buffers.
+int right_buffer_index = 0;
+
+int left_buffer_que    = 0;//Number of characters in buffer.
+int right_buffer_que   = 0;
+
+#define bool char
+bool          left_in_waiting       = 0;
+bool          right_in_waiting      = 0;
+unsigned char left_char_in_waiting  = 0;
+unsigned char right_char_in_waiting = 0;
+
+void process_char_left  (unsigned char character);
+void process_char_right (unsigned char character);
+
+void process_char(unsigned char character){//Written like this, so as to be able
+//to copy paste this code directly between firmware and brltty driver.
+    if(character & LEFT)
+    {
+        if(left_in_waiting)
+        {
+            character=left_char_in_waiting+(character&0b01111111);
+            left_char_in_waiting=0;
+            left_in_waiting=0;
+            process_char_left(character);
+        }else{
+            left_char_in_waiting=(character&0b01111111)<<7;
+            left_in_waiting=1;
+        }
+    }else{
+        if(right_in_waiting){
+            character=right_char_in_waiting+character;
+            right_char_in_waiting=0;
+            rigth_in_waiting=0;
+            process_char_right(character);
+        }else{
+            right_char_in_waiting=character<<7;
+            right_in_waiting=1;
+        }
+    }
+}
+
+void add_char_to_buffer(unsigned char character, int * index, int * que, unsigned char * buffer){
+/*NOTE! THIS IS AN OVERWRITTING BUFFER METHOD!!!! CAN CAUSE EVIL TIMING BUGS IF
+BUFFER IS WRITTEN TO FASTER THAN IT'S READ FROM!
+
+        \                /
+         \              /
+    \    ()____________()   /
+     \__/       XII/    \__/
+        |         /      |
+     ___|IX     O/    III|___
+    /   |                |   \
+        |      IV        |
+        \_______________/
+        /               \
+       /                 \
+    (COLEOPTERA EVILUS TIMINGUY)
+*/
+
+    *index++;
+    *que++;
+    if(*index==BYTE_BUFFER_SIZE)*index=0;
+    /*Why used >=?  If it's > then we're in big doo doo
+    and nothing can save us!*/
+    *buffer[*index]=character;    
+}
+
+void process_char_left  (unsigned char character){
+    add_char_to_buffer(character,
+                       &left_buffer_index,
+                       &left_buffer_que,
+                       &left_buffer);
+}
+
+void process_char_right (unsigned char character){
+    add_char_to_buffer(character,
+                       &right_buffer_index,
+                       &right_buffer_que,
+                       &right_buffer);
+}
+
+unsigned char get_char_from_buffer(int * index, int * que, unsigned char * buffer){
+    while(!*que)process_char(Serial_read());
+    *buffer[*index];
+    *que--;
+    *index++;
+    if(*index==BYTE_BUFFER_SIZE)*index=0;
+}
+
+unsigned char Serial_read_left(){
+    return get_char_from_buffer(&left_buffer_index,
+                                &left_buffer_que,
+                                &left_buffer);
+
+}
+
+unsigned char Serial_read_right(){
+    return get_char_from_buffer(&right_buffer_index,
+                                &right_buffer_que,
+                                &right_buffer);
+}
+
+void Serial_write(unsigned char byte){
     //#if SERIAL
     gioWriteData(gioEndpoint, &byte, 1);
     //#else
@@ -122,8 +226,7 @@ void Serial_write(unsigned char byte)
     //Write one byte to serial.
 }
 
-void Serial_nextLine(char * buffer)
-{
+void Serial_nextLine(char * buffer){
     #if SERIAL
     unsigned char byte=0;
     int i=0;
@@ -144,8 +247,7 @@ void Serial_nextLine(char * buffer)
     #endif
 }
 
-void waitFor(sender)
-{
+void waitFor(sender){
     char current_line[lineBufferLength];
     do {
         Serial_nextLine(current_line);
@@ -153,15 +255,15 @@ void waitFor(sender)
     }while(0!=strcmp(current_line,sender));
 }
 
-unsigned char waitForByte(unsigned char byte)
-{
-    unsigned char introduction_byte = Serial_read();
-    while(introduction_byte!=byte){
-        printf("Got unexpected byte:\n");
-        printByte(introduction_byte);
-        introduction_byte =Serial_read();
+void waitForByte_left(unsigned char byte){
+    unsigned char byte_received = serial_read_left();
+    while(byte_received!=byte){
+        printf("Got unexpected byte while waiting for byte %d on the left channel:\n",byte);
+        printByte(byte_received);
+        byte_received = Serial_read_left();
     }
 }
+
 
 int readInt(){//Twobyte
   unsigned char cb1 = 10;
@@ -172,15 +274,13 @@ int readInt(){//Twobyte
   return b1+b2;
 }
 
-void writeInt(int checksum)//2 byte
-{
+void writeInt(int checksum){//2 byte
     Serial_write((uint8_t)((checksum&0x0000FF00)>>8));
     Serial_write((uint8_t) (checksum&0x000000FF));
 }
 
 
-void writeLong(long checksum)
-{
+void writeLong(long checksum){
     Serial_write((uint8_t)((checksum&0xFF000000)>>24));
     Serial_write((uint8_t)((checksum&0x00FF0000)>>16));
     Serial_write((uint8_t)((checksum&0x0000FF00)>>8));
@@ -207,13 +307,12 @@ long readLong(){
   return b1+b2+b3+b4;
 }
 ////////////////////////////////////////////////////////////////////////////////
-void printByte(unsigned char byte)
+void printByte(unsigned char byte){
 /*
 Print byte to stdout a byte in a fashion which is tennable for debugging
 purposes.  As a character, as a decimal number, and as binary layed out in
 braille byte format.
 */
-{
     printf("CHAR:%c\n",byte);
     printf("DEC:%d\n",byte);    
     if(byte & (1))    printf("1"  ); else printf ("0"  );
@@ -244,12 +343,11 @@ static void identify_mode_send_settings(){
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-unsigned char identify_mode_setting_eq(char * setting, char * buffer)
+unsigned char identify_mode_setting_eq(char * setting, char * buffer){
 /*
 Are the settings equal?  Why not use strcmp?  With this, we return an index and
 not a compairison.
 */
-{
   unsigned char i=0;
   while(1)
   {
@@ -260,11 +358,10 @@ not a compairison.
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-unsigned char identify_mode_which_setting(char * buffer)
+unsigned char identify_mode_which_setting(char * buffer){
 /*
 Return the index of the setting which has been passed to us.
 */
-{
     unsigned char i;
     for(i=0;i<NumberOfSettings;i++){
         character=identify_mode_setting_eq(settings[i], buffer);
@@ -275,11 +372,10 @@ Return the index of the setting which has been passed to us.
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-static int identify_mode_receive_settings(char * sender, BrailleDisplay *brl)
+static int identify_mode_receive_settings(char * sender, BrailleDisplay *brl){
 /*
 Recieve settings from the FCHAD device.
 */
-{
     char current_line[lineBufferLength];
     waitFor(sender);
     unsigned char setting; unsigned char known_setting=1;
@@ -316,8 +412,7 @@ Recieve settings from the FCHAD device.
     return 0;//This should never happen.
 }
 
-static int identify_device(char * current_line)
-{
+static int identify_device(char * current_line){
   Serial_nextLine(current_line);
   if(strcmp(current_line,"FCHAD")!=0)
   {
@@ -332,8 +427,7 @@ static int identify_device(char * current_line)
   }
 }
 
-static int init(BrailleDisplay *brl)
-{
+static int init(BrailleDisplay *brl){
   char current_line[lineBufferLength];
   if(!identify_device(current_line))return 0;
   Serial_println("BRLTTY DRIVER - FCHAD?");Serial_read();
@@ -366,51 +460,19 @@ brl_destruct (BrailleDisplay *brl) {
 ////////////////////////////////////////////////////////////////////////////////
 //Write buffer//////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
-static char inbuffer(int x, int y, int columns, int rows)
-{
+static char inbuffer(int x, int y, int columns, int rows){
     return x>=0 && y>=0 && x<columns && y<rows;
 }
 
-#define CHECKSUM_FAIL_RESET_FAIL    0
-#define CHECKSUM_FAIL_RESET_SUCCESS 1
-#define CHECKSUM_SUCCESS            2
-int control_checksum(long checksum){
-    writeChecksum(checksum);
-    checksum_fchad=readChecksum();
-    printf("Checksum read:%d\n",checksum_fchad);
-    if(checksum_fchad==checksum){
-        printf("Buffer written.\n");
-        return 2;
-    }else{
-        printf("Checksum failed.\n");
-        Serial_write(SEND_RECIEVE_KEYCODE_MODE);//Send a keycode to FCHAD device to see if it is
-        //in idle mode.
-        Serial_write(6);//The random
-        Serial_write(7);//keycode.
-        if(Serial_read()==6&&Serial_read()==7)
-            return CHECKSUM_FAIL_RESET_SUCCESS;
-        else{
-            printf("Hmm, FCHAD device isn't in IDLE mode.");
-            return CHECKSUM_FAIL_RESET_FAIL;
-        }
-    }
-}
-#define writeChecksum writeLong
-#define readChecksum readLong
-static int writeWindow(BrailleDisplay *brl, const wchar_t *text)
-{
-  long checksum=0;
-  long checksum_fchad;
-  int bytes_written_since_last_check=0;
-  int fchad_bytes_read;
+static int writeWindow(BrailleDisplay *brl, const wchar_t *text){
   unsigned char fchad_byte;
   int buff_pos=0;
   int x_pos=0;
   int y_pos=0;
 
-  Serial_write(READ_WRITE_BUFFER_MODE);
+  Serial_write_side(LEFT,READ_WRITE_BUFFER_MODE);
   printf("Entering write buffer mode.\n");
-  waitForByte(READ_WRITE_BUFFER_MODE);
+  waitForByte_left(READ_WRITE_BUFFER_MODE);
   printf("Writting buffer.\n");
   while(1)
   {
@@ -421,62 +483,32 @@ static int writeWindow(BrailleDisplay *brl, const wchar_t *text)
           if(y_pos>=brl->textRows)//EOB
           {
               printf("EOB\n");
-              Serial_write(BUFFER_ESCAPE);//End of buffer
-              Serial_write(BUFFER_EOB);
-              switch(control_checksum(checksum))
-              {
-                  case CHECKSUM_FAIL_RESET_FAIL:
-                    return 0;
-                    break;
-                  case CHECKSUM_FAIL_RESET_SUCCESS:
-                    writeWindow(brl, text);
-                    break;
-                  case CHECKSUM_SUCCESS:
-                    return 1;
-                    break;
-              }
+              Serial_write_side(LEFT, BUFFER_ESCAPE);//End of buffer
+              Serial_write_side(LEFT, BUFFER_EOB);
           }else
           {
               printf("EOL\n");
-              Serial_write(BUFFER_ESCAPE);//End of row
-              Serial_write(BUFFER_EOL);
+              Serial_write_side(LEFT, BUFFER_ESCAPE);//End of row
+              Serial_write_side(LEFT, BUFFER_EOL);
           }
       }
-      if(bytes_written_since_last_check>=10)
-      {
-          Serial_write(BUFFER_ESCAPE);
-          Serial_write(BUFFER_INTERMEDIATE_CHECKSUM);
-          writeInt(bytes_written_since_last_check);
-          fchad_bytes_read = readInt();
-          printf("  BRLTTY wrote %d bytes while FCHAD read %d bytes.\n",
-           bytes_written_since_last_check, fchad_bytes_read);
-          if(fchad_bytes_read != bytes_written_since_last_check)
-          {
-              printf("Bytes read check failed while writting to buffer.\n");
-          }
-          //printf("Checked %d\n",Serial_read());
-          bytes_written_since_last_check=0;
-      }
-      bytes_written_since_last_check++;
-
       if(brl->buffer[buff_pos]==BUFFER_ESCAPE)
-        Serial_write(BUFFER_ESCAPE);
+        Serial_write_side(LEFT, BUFFER_ESCAPE);
 
       printf("Writting buffer possition: %d\n", buff_pos);
       printByte(brl->buffer[buff_pos]);
-      Serial_write(brl->buffer[buff_pos]);
-      fchad_byte = Serial_read();
+      Serial_write_side(LEFT, brl->buffer[buff_pos]);
+      fchad_byte = Serial_read_left();
       printf("Wrote %d recieved %d\n",brl->buffer[buff_pos],fchad_byte);
 
       if(fchad_byte!=brl->buffer[buff_pos]){
           printf("Woops, looks like we got interupted while writting to the buffer, restarting.\n");
-          Serial_write(BUFFER_ESCAPE);
-          Serial_write(BUFFER_EXIT_READ_WRITE_BUFFER_MODE);
+          Serial_write_side(LEFT, BUFFER_ESCAPE);
+          Serial_write_side(LEFT, BUFFER_EOB);
           writeWindow(brl,text);
           return;
       }
 
-      checksum=checksum+brl->buffer[buff_pos];
       x_pos++;buff_pos++;
   }
   printf("Done writting buffer.\n");
@@ -504,8 +536,7 @@ brl_keyToCommand (BrailleDisplay *brl, KeyTableCommandContext context, int key) 
 }
 #endif /* BRL_HAVE_KEY_CODES */
 
-static int getKeyCode()
-{
+static int getKeyCode(){
     return readInt();
 }
 
