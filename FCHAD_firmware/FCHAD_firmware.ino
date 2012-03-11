@@ -295,9 +295,11 @@ void process_char(unsigned char character){//Written like this, so as to be able
             left_char_in_waiting=0;
             left_in_waiting=0;
             process_char_left(character);
+            return;
         }else{
             left_char_in_waiting=(character&0b01111111);
             left_in_waiting=1;
+            return;
         }
     }else{
         if(right_in_waiting){
@@ -305,9 +307,11 @@ void process_char(unsigned char character){//Written like this, so as to be able
             right_char_in_waiting=0;
             right_in_waiting=0;
             process_char_right(character);
+            return;
         }else{
             right_char_in_waiting=character;
             right_in_waiting=1;
+            return;
         }
     }
 }
@@ -316,17 +320,19 @@ void process_char_left(unsigned char character){
         switch(mode_brltty){
             case READ_WRITE_BUFFER_MODE:
                 read_buffer_mode_process_char(character);
+                return;
                 break;
             case DISPLAY_CHAR_MODE:
                 displayChar(character);
+                return;
                 break;
             case IDLE_MODE:
             default:
                 switch(character){
                     case  SEND_RECIEVE_CURSOR_POS_MODE : 
-                        send_cursor_pos();       break;
+                        send_cursor_pos();return;break;
                     default:
-                        mode_brltty = character; break;
+                        mode_brltty = character; return; break;
                 }
             break;
         }
@@ -407,6 +413,7 @@ static void read_buffer_mode_process_char    (unsigned char character)
                 read_buffer_mode_stage++;return;
             }
             add_character_to_buffer(character);
+            return;
             break;
         case READ_BUFFER_MODE_STAGE_ESCAPE:
             switch(character){
