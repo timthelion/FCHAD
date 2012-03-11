@@ -49,8 +49,11 @@ class braille_reader_host:
         time.sleep(self._setting_manager.settings["SERIAL_WAIT_TIME"][1]/100.0)
         if nap:    
             self.nap()
-        else:
+        if not dry:
             self._cursor = buffer_cursor(self,self._columns,self._rows)
+        else:
+            while True:
+                self.displayChar(ord(raw_input()))
         
     def serial_init(self):
         serialLogger.write("CURSOR DRIVER - FCHAD?\n")
@@ -59,7 +62,8 @@ class braille_reader_host:
         self._setting_manager.writeSettings("CURSOR DRIVER\n",settings_to_send)
             
     def update(self, pos_x,pos_y):
-         serialLogger.writeRight(chr(3))
+         print "Updating at cordinates " + str(pos_x)+"X"+str(pos_y)
+         serialLogger.writeRight(chr(4))
          serialLogger.writeRight(chr(pos_x >> 8))
          serialLogger.writeRight(chr(pos_x &  0X00FF))
          serialLogger.writeRight(chr(pos_y >> 8))
@@ -75,13 +79,15 @@ class braille_reader_host:
     def nap(self):
         print "Napping..."
         for i in range(10000):
-            serialLogger.writeRight(chr(6))
-            serialLogger.writeRight(chr(255))
+            displayChar(255)
             time.sleep(0.05)
-            serialLogger.writeRight(chr(6))
-            serialLogger.writeRight(chr(0))
+            displayChar(0)
             time.sleep(0.05)
         print "Good morning!"
+        
+    def displayChar(self, char):
+        serialLogger.writeRight(chr(6))
+        serialLogger.writeRight(chr(char))
         
     def __delete__(self):
         self._serial.close()
@@ -89,6 +95,7 @@ class braille_reader_host:
 help = "--help" in sys.argv or "-h" in sys.argv
 log = "--log" in sys.argv
 nap = "--nap" in sys.argv
+dry = "--dry" in sys.argv
 serialLogFile=None
 
 if help:
@@ -96,6 +103,7 @@ if help:
     Start BRLTTY first!
     --log to log serial transactions to file.
     --nap use the LED's to do an apha state nap.
+    --dry initialize, but do not send any positions or keycodes.
     """
     print m
 else:

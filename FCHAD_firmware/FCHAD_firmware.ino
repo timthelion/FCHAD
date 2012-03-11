@@ -48,7 +48,6 @@ byte character;
 //////////////////////////////////////////
 ///Standard functions/////////////////////
 //////////////////////////////////////////
-
 boolean in_buffer(int xi,int yi){
     return xi<buffer_columns&&yi<buffer_rows;
 }
@@ -100,16 +99,16 @@ void waitFor(char * line)
     }while(strcmp(current_line ,line));
 }
 
-void writeByteSide(unsigned char leftRight, unsigned char character){
-    if(leftRight==LEFT)
+void writeByteSide(unsigned char side, unsigned char character){
+//Same as Serial_write_side in braille.c
+    if(side==LEFT)
     {
-        Serial.write(character&LEFT);
-        Serial.write(character&RIGHT<<4);
+        Serial.write((character&0b01111111)+0b10000000);
+        Serial.write((character>>7)+0b10000000);
     }else{
-        Serial.write(character&RIGHT);
-        Serial.write(character&LEFT>>4);
+        Serial.write(character&0b01111111);
+        Serial.write(character>>7);
     }
-    
 }
 
 void writeIntSide(unsigned char leftRight, int i){
@@ -117,35 +116,10 @@ void writeIntSide(unsigned char leftRight, int i){
     writeByteSide(leftRight, (uint8_t)x & 0x00FF ) ;    
 }
 
-void writeInt(int x){
-    Serial.write( (uint8_t)((x & 0xFF00) >> 8) ) ;
-    Serial.write( (uint8_t)x & 0x00FF ) ;
-}
-
 int makeInt(unsigned char b1, unsigned char b2){
     b1 = (uint16_t)b1<<8;
     b2 =  (uint16_t)b2;
     return b1+b2;
-}
-
-int readInt(){
-    makeInt(nextChar(),nextChar());
-}
-
-long readLong(){
-  long b1 = (uint32_t)nextChar()<<24;
-  long b2 = (uint32_t)nextChar()<<16;
-  long b3 = (uint32_t)nextChar()<<8;
-  long b4 = (uint32_t)nextChar();
-  return b1+b2+b3+b4;
-}
-
-static void writeLong(long mylong)//Write a long to serial
-{
-    Serial.write((uint8_t)((mylong&0xFF000000)>>24));
-    Serial.write((uint8_t)((mylong&0x00FF0000)>>16));
-    Serial.write((uint8_t)((mylong&0x0000FF00)>>8));
-    Serial.write((uint8_t) (mylong&0x000000FF));
 }
 
 //////////////////////////////////////////
@@ -195,7 +169,6 @@ void identify_mode_send_setting(byte setting,String value){
 
 void identify_mode_send_settings(){
   Serial.println(DEVICE_ID);
-  
   identify_mode_send_setting(CURSOR_DRIVER,     cursor_driver);
   identify_mode_send_setting(BRLTTY_DRIVER,     brltty_driver);
   identify_mode_send_setting(BUFFER_SIZE_MAX,   String(buffer_size_max,DEC));
@@ -267,6 +240,7 @@ void identify_mode_cleanup(){
 }
 
 void identify_mode(){
+    displayChar(byte(255));
     Serial.println(DEVICE_ID);
     waitFor("BRLTTY DRIVER - FCHAD?");
     identify_mode_send_settings();
@@ -279,12 +253,11 @@ void identify_mode(){
     identify_mode_receive_settings("CURSOR DRIVER");
     
     delay(serialWaitTime);
-    
-    waitFor("BRLTTY DRIVER - FCHAD?");    
+    waitFor("BRLTTY DRIVER - FCHAD?");
     identify_mode_send_settings();
     
-    identify_mode_cleanup();
-    displayChar(byte(255));//Just to show that all the motors work and we finished
+    //identify_mode_cleanup();
+    //displayChar(byte(0));//Just to show that all the motors work and we finished
     //the init sequence with some degree of success.
 }
 
@@ -318,67 +291,70 @@ void process_char(unsigned char character){//Written like this, so as to be able
     {
         if(left_in_waiting)
         {
-            character=left_char_in_waiting+(character&0b01111111);
+            character=left_char_in_waiting+((character&0b01111111)<<7);
             left_char_in_waiting=0;
             left_in_waiting=0;
             process_char_left(character);
         }else{
-            left_char_in_waiting=(character&0b01111111)<<7;
+            left_char_in_waiting=(character&0b01111111);
             left_in_waiting=1;
         }
     }else{
         if(right_in_waiting){
-            character=right_char_in_waiting+character;
+            character=right_char_in_waiting+(character<<7);
             right_char_in_waiting=0;
-            rigth_in_waiting=0;
+            right_in_waiting=0;
             process_char_right(character);
         }else{
-            right_char_in_waiting=character<<7;
+            right_char_in_waiting=character;
             right_in_waiting=1;
         }
     }
 }
 
-void process_char_left(unsigned char character){
+void process_char_left(unsigned char character){        
         switch(mode_brltty){
-        case READ_WRITE_BUFFER_MODE:
-            read_buffer_mode_process_char(character);
+            case READ_WRITE_BUFFER_MODE:
+                read_buffer_mode_process_char(character);
+                break;
+            case DISPLAY_CHAR_MODE:
+                displayChar(character);
+                break;
+            case IDLE_MODE:
+            default:
+                switch(character){
+                    case  SEND_RECIEVE_CURSOR_POS_MODE : 
+                        send_cursor_pos();       break;
+                    default:
+                        mode_brltty = character; break;
+                }
+            break;
+        }
+}
+
+void process_char_right(unsigned char character){
+    switch(mode_cursor){
+        case SEND_RECIEVE_CURSOR_POS_MODE:
+            set_cursor_pos_mode_process_char(character);
+            break;
+        case SEND_RECIEVE_KEYCODE_MODE:
+            recieve_key_mode_process_char(character);
             break;
         case DISPLAY_CHAR_MODE:
             displayChar(character);
             break;
         case IDLE_MODE:
         default:
-            switch(character){
-                case  SEND_RECIEVE_CURSOR_POS_MODE : 
-                    send_cursor_pos();       break;
-                default: 
-                    mode_brltty = character; break;
-            }
+            mode_cursor=character;
             break;
-    }
-}
-
-void process_char_right(unsigned char character){
-    switch(mode_cursor){
-    case SET_CURSOR_POS_MODE:
-        set_cursor_pos_mode_process_char(character);
-        break;
-    case SEND_RECIEVE_KEYCODE_MODE:
-        recieve_key_mode_process_char(character);
-        break;
-    case DISPLAY_CHAR_MODE:
-        displayChar(character);
-        break;
-    case IDLE_MODE:
-    default:
-        mode_cursor=character;
-        break;
     }
 }
 ///////////////////////////////////////////
 ///READ BUFFER MODE////////////////////////
 ///////////////////////////////////////////
+int read_buffer_mode_x = 0;
+int read_buffer_mode_y = 0;
+
 /*
 Bytes sent on the left channel while read buffer mode is activated will be
 processed by this code.  Every byte recieved which is to be written to buffer
@@ -405,16 +381,15 @@ void read_buffer_clear_eob(int xi, int yi){
 
 void add_character_to_buffer(unsigned char character){
     writeByteSide(LEFT,character);//Write buffer mode confirmation characters
-    //are send left sided to brltty.  Keycodes are sent rigth sided.
+    //are send left sided to brltty.  Keycodes are sent right sided.
     buffer[buffer_index(read_buffer_mode_x,
                         read_buffer_mode_y)]=character;
     read_buffer_mode_x++;
 }
 
-#define READ_BUFFER_MODE_STAGE_IDENTIFY   0
-#define READ_BUFFER_MODE_STAGE_READ_BYTES 1
-#define READ_BUFFER_MODE_STAGE_ESCAPE     2
-int read_buffer_mode_stage = 0;
+#define READ_BUFFER_MODE_STAGE_READ_BYTES 0
+#define READ_BUFFER_MODE_STAGE_ESCAPE     1
+int read_buffer_mode_stage = READ_BUFFER_MODE_STAGE_READ_BYTES;
 /*
 There is so much I've learned to hate about "traditional" C.  I have seen many
 projects that would have put these definitions in a separate <.h> file, and then
@@ -424,26 +399,15 @@ to share such definitions.  The <.h> should atleast be included near the place
 that they are used!
 */
 
-int read_buffer_mode_x = 0;
-int read_buffer_mode_y = 0;
-
 static void read_buffer_mode_process_char    (unsigned char character)
 {
     switch(read_buffer_mode_stage){
-        case READ_BUFFER_MODE_STAGE_IDENTIFY:
-            Serial.write(READ_WRITE_BUFFER_MODE);
-            read_buffer_mode_stage++;
-            //That time, when you actually don't put a break statement in your
-            //switch.  Almost as special as the day I'll finally use integral
-            //calculus outside of school :)
         case READ_BUFFER_MODE_STAGE_READ_BYTES:
             if(character == BUFFER_ESCAPE){
                 read_buffer_mode_stage++;return;
             }
             add_character_to_buffer(character);
-            break;//OMG, I got so excited about not having to include this on
-            //the last case, I almost forgot it this time :O ..  That could have
-            //caused some major debugging pain!
+            break;
         case READ_BUFFER_MODE_STAGE_ESCAPE:
             switch(character){
                 case BUFFER_ESCAPE:
@@ -462,9 +426,9 @@ static void read_buffer_mode_process_char    (unsigned char character)
                     read_buffer_mode_x=0;
                     read_buffer_mode_y=0;
                     mode_brltty=IDLE_MODE;
-                    read_buffer_mode_stage=READ_BUFFER_MODE_STAGE_IDENTIFY;
+                    read_buffer_mode_stage=READ_BUFFER_MODE_STAGE_READ_BYTES;
                     break;
-                default;
+                default:;
             }
             break;
     }

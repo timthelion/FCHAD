@@ -48,6 +48,30 @@ unsigned char character;
 
 static unsigned char *previousCells = NULL; /* previous pattern displayed */
 ////////////////////////////////////////////////////////////////////////////////
+void printByte(unsigned char byte){
+/*
+Print byte to stdout a byte in a fashion which is tennable for debugging
+purposes.  As a character, as a decimal number, and as binary layed out in
+braille byte format.
+*/
+    printf("CHAR:%c\n",byte);
+    printf("DEC:%d\n",byte);    
+    if(byte & (1<<7)) printf("1"  ); else printf ("0"  );
+    if(byte & (1<<4)) printf("1\n"); else printf ("0\n");
+
+    if(byte & (1<<6)) printf("1"  ); else printf ("0"  );
+    if(byte & (1<<3)) printf("1\n"); else printf ("0\n");
+
+
+    if(byte & (1<<5)) printf("1"  ); else printf ("0"  );
+    if(byte & (1<<2)) printf("1\n"); else printf ("0\n");
+
+    if(byte & (1<<1)) printf("1"  ); else printf ("0"  );
+    if(byte & (1))    printf("1\n"); else printf ("0\n");
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
 //Arduino Serial////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
 #define SERIAL 1
@@ -111,13 +135,13 @@ unsigned char Serial_read(){
 
 #define BYTE_BUFFER_SIZE 100
 char left_buffer  [BYTE_BUFFER_SIZE];//Circular buffers.
-char rigth_buffer [BYTE_BUFFER_SIZE];
+char right_buffer [BYTE_BUFFER_SIZE];
 
-int left_buffer_index  = 0;//Index in circular buffers.
-int right_buffer_index = 0;
+int left_buffer_write_index  = 0;
+int right_buffer_write_index = 0;
 
-int left_buffer_que    = 0;//Number of characters in buffer.
-int right_buffer_que   = 0;
+int left_buffer_read_index    = 0;
+int right_buffer_read_index   = 0;
 
 #define bool char
 bool          left_in_waiting       = 0;
@@ -130,32 +154,36 @@ void process_char_right (unsigned char character);
 
 void process_char(unsigned char character){//Written like this, so as to be able
 //to copy paste this code directly between firmware and brltty driver.
+    //printf("Processing byte:\n");
+    //printByte(character);
     if(character & LEFT)
     {
         if(left_in_waiting)
         {
-            character=left_char_in_waiting+(character&0b01111111);
+            character=left_char_in_waiting+((character&0b01111111)<<7);
             left_char_in_waiting=0;
             left_in_waiting=0;
+            //printf("Byte recieved on left channel:\n");
+            //printByte(character);
             process_char_left(character);
         }else{
-            left_char_in_waiting=(character&0b01111111)<<7;
+            left_char_in_waiting=(character&0b01111111);
             left_in_waiting=1;
         }
     }else{
         if(right_in_waiting){
-            character=right_char_in_waiting+character;
+            character=right_char_in_waiting+(character<<7);
             right_char_in_waiting=0;
-            rigth_in_waiting=0;
+            right_in_waiting=0;
             process_char_right(character);
         }else{
-            right_char_in_waiting=character<<7;
+            right_char_in_waiting=character;
             right_in_waiting=1;
         }
     }
 }
 
-void add_char_to_buffer(unsigned char character, int * index, int * que, unsigned char * buffer){
+void add_char_to_buffer(unsigned char character, int * write_index, unsigned char * buffer){
 /*NOTE! THIS IS AN OVERWRITTING BUFFER METHOD!!!! CAN CAUSE EVIL TIMING BUGS IF
 BUFFER IS WRITTEN TO FASTER THAN IT'S READ FROM!
 
@@ -172,48 +200,58 @@ BUFFER IS WRITTEN TO FASTER THAN IT'S READ FROM!
        /                 \
     (COLEOPTERA EVILUS TIMINGUY)
 */
-
-    *index++;
-    *que++;
-    if(*index==BYTE_BUFFER_SIZE)*index=0;
-    /*Why used >=?  If it's > then we're in big doo doo
+    /*Why haven't I used >=?  If it's > then we're in big doo doo
     and nothing can save us!*/
-    *buffer[*index]=character;    
+    buffer[(*write_index)]=character;
+    (*write_index)++;
+    if((*write_index)==BYTE_BUFFER_SIZE)(*write_index)=0;
 }
 
 void process_char_left  (unsigned char character){
     add_char_to_buffer(character,
-                       &left_buffer_index,
-                       &left_buffer_que,
-                       &left_buffer);
+                       &left_buffer_write_index,
+                       left_buffer);
 }
 
 void process_char_right (unsigned char character){
     add_char_to_buffer(character,
-                       &right_buffer_index,
-                       &right_buffer_que,
-                       &right_buffer);
+                       &right_buffer_write_index,
+                       right_buffer);
 }
 
-unsigned char get_char_from_buffer(int * index, int * que, unsigned char * buffer){
-    while(!*que)process_char(Serial_read());
-    *buffer[*index];
-    *que--;
-    *index++;
-    if(*index==BYTE_BUFFER_SIZE)*index=0;
+unsigned char get_char_from_buffer(int * write_index, int * read_index, unsigned char * buffer){
+    unsigned char character;
+    while((*write_index)==(*read_index))process_char(Serial_read());
+    character=buffer[(*read_index)];
+    (*read_index)++;
+    if((*read_index)==BYTE_BUFFER_SIZE)(*read_index)=0;
+    return character;
 }
 
 unsigned char Serial_read_left(){
-    return get_char_from_buffer(&left_buffer_index,
-                                &left_buffer_que,
-                                &left_buffer);
+    return get_char_from_buffer(&left_buffer_write_index,
+                                &left_buffer_read_index,
+                                left_buffer);
 
 }
 
 unsigned char Serial_read_right(){
-    return get_char_from_buffer(&right_buffer_index,
-                                &right_buffer_que,
-                                &right_buffer);
+    return get_char_from_buffer(&right_buffer_write_index,
+                                &right_buffer_read_index,
+                                right_buffer);
+}
+
+void Serial_write_side(unsigned char side, unsigned char character){
+//Same as writeByteSide in firmware.
+    if(side==LEFT)
+    {
+        Serial_write((character&0b01111111)+0b10000000);
+        Serial_write((character>>7)+0b10000000);
+    }else{
+        Serial_write(character&0b01111111);
+        Serial_write(character>>7);
+    }
+
 }
 
 void Serial_write(unsigned char byte){
@@ -256,7 +294,7 @@ void waitFor(sender){
 }
 
 void waitForByte_left(unsigned char byte){
-    unsigned char byte_received = serial_read_left();
+    unsigned char byte_received = Serial_read_left();
     while(byte_received!=byte){
         printf("Got unexpected byte while waiting for byte %d on the left channel:\n",byte);
         printByte(byte_received);
@@ -306,28 +344,6 @@ long readLong(){
   long b4 = (uint32_t)cb4;
   return b1+b2+b3+b4;
 }
-////////////////////////////////////////////////////////////////////////////////
-void printByte(unsigned char byte){
-/*
-Print byte to stdout a byte in a fashion which is tennable for debugging
-purposes.  As a character, as a decimal number, and as binary layed out in
-braille byte format.
-*/
-    printf("CHAR:%c\n",byte);
-    printf("DEC:%d\n",byte);    
-    if(byte & (1))    printf("1"  ); else printf ("0"  );
-    if(byte & (1<<3)) printf("1\n"); else printf ("0\n");
-  
-    if(byte & (1<<1)) printf("1"  ); else printf ("0"  );
-    if(byte & (1<<4)) printf("1\n"); else printf ("0\n");
-  
-    if(byte & (1<<2))  printf("1"  ); else printf ("0"  );
-    if(byte & (1<<5))  printf("1\n"); else printf ("0\n");
-  
-    if(byte & (1<<6))  printf("1"  ); else printf ("0"  );
-    if(byte & (1<<7))  printf("1\n"); else printf ("0\n");
-}
-
 ////////////////////////////////////////////////////////////////////////////////
 ///Send and recieve settings////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
@@ -472,8 +488,6 @@ static int writeWindow(BrailleDisplay *brl, const wchar_t *text){
 
   Serial_write_side(LEFT,READ_WRITE_BUFFER_MODE);
   printf("Entering write buffer mode.\n");
-  waitForByte_left(READ_WRITE_BUFFER_MODE);
-  printf("Writting buffer.\n");
   while(1)
   {
       if(!inbuffer(x_pos,y_pos,brl->textColumns,brl->textRows))//EOL
@@ -491,16 +505,17 @@ static int writeWindow(BrailleDisplay *brl, const wchar_t *text){
               Serial_write_side(LEFT, BUFFER_ESCAPE);//End of row
               Serial_write_side(LEFT, BUFFER_EOL);
           }
+          return;
       }
       if(brl->buffer[buff_pos]==BUFFER_ESCAPE)
         Serial_write_side(LEFT, BUFFER_ESCAPE);
-
+        
       printf("Writting buffer possition: %d\n", buff_pos);
       printByte(brl->buffer[buff_pos]);
       Serial_write_side(LEFT, brl->buffer[buff_pos]);
       fchad_byte = Serial_read_left();
+      approximateDelay(100);
       printf("Wrote %d recieved %d\n",brl->buffer[buff_pos],fchad_byte);
-
       if(fchad_byte!=brl->buffer[buff_pos]){
           printf("Woops, looks like we got interupted while writting to the buffer, restarting.\n");
           Serial_write_side(LEFT, BUFFER_ESCAPE);

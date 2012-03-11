@@ -51,7 +51,7 @@ class loggingSerial:
             x=self.serialdev.readline()
         except serial.serialutil.SerialException:
             print "SerialException on serialreadline..."
-            return self.readline()
+            return self.serialdev.readline()
         x=x.partition("\r")[0]#get rid of line returns...
         if self.serialLogFile:
             self.serialLogFile.write("##READ_LINE##")
@@ -61,11 +61,12 @@ class loggingSerial:
     
     def write(self, x):
         self.serialdev.write(x)
+        print "writting char "
         if self.serialLogFile:
             self.serialLogFile.write("##WRITE##")
             self.serialLogFile.write(x)
             self.serialLogFile.write("\n")
 
     def writeRight(self, x):
-        self.write(x&0b01111111)
-        self.write(x>>7)
+        self.write(chr(ord(x)&0b01111111))
+        self.write(chr(ord(x)>>7))

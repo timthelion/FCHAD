@@ -21,7 +21,7 @@ class buffer_cursor:
         self._root               = self._screen.root
         self._columns            = columns
         self._rows               = rows
-        self._x_pos              = 0
+        self._x_pos              = -1
         self._length             = 0
         self._host               = host
         self._screenWidth        = self._root.get_geometry().width
@@ -93,8 +93,11 @@ class buffer_cursor:
 
     def _update(self):
       x_pos=self._getpos();
+      if self._x_pos== -1:
+        self._x_pos=x_pos
+        return
       if x_pos != self._x_pos:
          self._x_pos=x_pos
-      if 0 <= x_pos <=self._columns:
-         y_pos=0
-         self._host.update(x_pos,y_pos)
+         if 0 <= x_pos <=self._columns:
+                y_pos=0
+                self._host.update(x_pos,y_pos)
