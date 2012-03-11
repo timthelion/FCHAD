@@ -59,27 +59,27 @@ class braille_reader_host:
         self._setting_manager.writeSettings("CURSOR DRIVER\n",settings_to_send)
             
     def update(self, pos_x,pos_y):
-         serialLogger.write(chr(3))
-         serialLogger.write(chr(pos_x >> 8))
-         serialLogger.write(chr(pos_x &  0X00FF))
-         serialLogger.write(chr(pos_y >> 8))
-         serialLogger.write(chr(pos_y >> 0X00FF))
+         serialLogger.writeRight(chr(3))
+         serialLogger.writeRight(chr(pos_x >> 8))
+         serialLogger.writeRight(chr(pos_x &  0X00FF))
+         serialLogger.writeRight(chr(pos_y >> 8))
+         serialLogger.writeRight(chr(pos_y >> 0X00FF))
     
     def send_key(self,keycode):
         print "Sending key:"
         print keycode
-        serialLogger.write(chr(5))
-        serialLogger.write(chr(keycode >> 8))
-        serialLogger.write(chr(keycode &  0X00FF))
+        serialLogger.writeRight(chr(5))
+        serialLogger.writeRight(chr(keycode >> 8))
+        serialLogger.writeRight(chr(keycode &  0X00FF))
         
     def nap(self):
         print "Napping..."
         for i in range(10000):
-            serialLogger.write(chr(6))
-            serialLogger.write(chr(255))
+            serialLogger.writeRight(chr(6))
+            serialLogger.writeRight(chr(255))
             time.sleep(0.05)
-            serialLogger.write(chr(6))
-            serialLogger.write(chr(0))
+            serialLogger.writeRight(chr(6))
+            serialLogger.writeRight(chr(0))
             time.sleep(0.05)
         print "Good morning!"
         

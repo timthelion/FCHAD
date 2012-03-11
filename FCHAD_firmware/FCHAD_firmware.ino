@@ -346,15 +346,14 @@ void process_char_left(unsigned char character){
             break;
         case DISPLAY_CHAR_MODE:
             displayChar(character);
+            break;
         case IDLE_MODE:
         default:
             switch(character){
-                case  READ_WRITE_BUFFER_MODE       : 
-                    read_buffer_mode     =1; break;
                 case  SEND_RECIEVE_CURSOR_POS_MODE : 
-                    send_cursor_pos(); break;
-                case  DISPLAY_CHAR_MODE            : 
-                    display_char_mode    =1; break;
+                    send_cursor_pos();       break;
+                default: 
+                    mode_brltty = character; break;
             }
             break;
     }
@@ -368,14 +367,12 @@ void process_char_right(unsigned char character){
     case SEND_RECIEVE_KEYCODE_MODE:
         recieve_key_mode_process_char(character);
         break;
+    case DISPLAY_CHAR_MODE:
+        displayChar(character);
+        break;
     case IDLE_MODE:
     default:
-        switch(character){
-            case  SET_CURSOR_POS_MODE          : 
-                set_cursor_pos_mode=1; break;
-            case  SEND_RECIEVE_KEYCODE_MODE    : 
-                receive_key_mode=1;    break;
-        }
+        mode_cursor=character;
         break;
     }
 }

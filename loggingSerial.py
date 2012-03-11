@@ -65,3 +65,7 @@ class loggingSerial:
             self.serialLogFile.write("##WRITE##")
             self.serialLogFile.write(x)
             self.serialLogFile.write("\n")
+
+    def writeRight(self, x):
+        self.write(x&0b01111111)
+        self.write(x>>7)
