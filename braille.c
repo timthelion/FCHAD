@@ -26,6 +26,7 @@
 
 #include<X11/Xlib.h>
 #include <pthread.h>
+#include <semaphore.h>
 
 //typedef enum {
 //  PARM_XXX,
@@ -120,38 +121,23 @@ void Serial_write(unsigned char byte){
     //#endif
     //Write one byte to serial.
 }
-
+////////////////////////////////////////////////////////////////////////////////
+//KEYS//////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+#define SCROLL_LEFT  255
+#define SCROLL_RIGHT 254
+////////////////////////////////////////////////////////////////////////////////
+//XLIB//////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
 Display *dpy;
 pthread_t * event_loop;
+sem_t key_waiting;
+unsigned char key;
 
 void run_event_loop(){
- 	XEvent e;
- 	int x,y,new_x,new_y;
-    while(1) {
-    XNextEvent(dpy, &e);
-	if(e.type==MotionNotify){
-	    new_y=0;
-	    new_x=e.xkey.x/(1024/buffer_columns);//TODO get screen size!!!
-	    if(x!=new_x||y!=new_y)
-	    {
-	        printf("x:%d y:%d\n",e.xkey.x,e.xkey.y);
-	        Serial_write(previousCells[x+y*buffer_columns]);
-	        printByte(previousCells[x+y*buffer_columns]);
-	        x=new_x;y=new_y;
-	    }
-	}
- }
-}
-
-static int
-brl_construct (BrailleDisplay *brl, char **parameters, const char *device) {
-  //XLIB
-
  	Window rootwin;
  	int scr;
  	GC gc;
- 
- 
  	if(!(dpy=XOpenDisplay(NULL))) {
  		fprintf(stderr, "ERROR: could not open display\n");
  		exit(1);
@@ -161,27 +147,62 @@ brl_construct (BrailleDisplay *brl, char **parameters, const char *device) {
  	rootwin = RootWindow(dpy, scr);
 
     XGrabPointer(dpy, rootwin, True,
-               ButtonPressMask |
+                 ButtonPressMask |
                  ButtonReleaseMask |
                  PointerMotionMask |
                  FocusChangeMask |
                  EnterWindowMask |
-                  LeaveWindowMask,
+                 LeaveWindowMask,
                GrabModeAsync,
-               GrabModeAsync,
-               RootWindow(dpy, DefaultScreen(dpy)),
+               GrabModeAsync,RootWindow(dpy, DefaultScreen(dpy)),
                None,
                CurrentTime);
-    
+ 	XEvent e;
+ 	int x,y,new_x,new_y;
+    while(1) {
+    XNextEvent(dpy, &e);
+	if(e.type==MotionNotify){
+	    new_y=0;
+	    new_x=e.xkey.x/(1024/(buffer_columns+2));//TODO get screen size!!!
+	    if(x!=new_x||y!=new_y)
+	    {
+	        printf("x:%d y:%d,i:%d\n",e.xkey.x,e.xkey.y,new_x);
+	        if(x>0&&x<buffer_columns){
+	            Serial_write(previousCells[(x-1)+y*buffer_columns]);
+	            printByte(previousCells[(x-1)+y*buffer_columns]);
+	        }
+	        x=new_x;y=new_y;
+	    }
+	}else if(e.type==ButtonPress){
+	    if(x>0&&x<buffer_columns)
+	    {
+	        key=(unsigned char)x;
+	    }else if(x==0){
+	        key=SCROLL_LEFT;
+	    }else if(x==buffer_columns){
+	        key=SCROLL_RIGHT;
+	    }
+	    sem_post(&key_waiting);
+	}else{
+	    printf("Other event\n");
+	}
+ }
+}
 
-
+////////////////////////////////////////////////////////////////////////////////
+//BRLTTY FUNCTIONS//////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+static int
+brl_construct (BrailleDisplay *brl, char **parameters, const char *device) {
   //SERIAL
   Serial_init(device);
   //BRLTTY
   brl->textColumns=buffer_columns;
   brl->textRows=buffer_rows;
   previousCells = malloc(buffer_columns*buffer_rows);
-  
+
+  //XLib thread
+  sem_init(&key_waiting, 0, 0);  
   pthread_create(&event_loop,NULL, &run_event_loop,NULL);
   return 1;
 }
@@ -222,6 +243,11 @@ static int getKeyCode(){
 
 static int
 brl_readCommand (BrailleDisplay *brl, KeyTableCommandContext context) {
-  //printf("Keycode:%d\n", Serial_read());
+  sem_wait(&key_waiting);
+  switch(key){
+      case SCROLL_LEFT: printf("SCROLL_LEFT\n");break;
+      case SCROLL_RIGHT: printf("SCROLL_RIGHT\n");break;
+      default:printf("Keypress%d\n",key);
+  }
   return EOF;
 }
