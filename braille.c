@@ -26,7 +26,6 @@
 
 #include<X11/Xlib.h>
 #include <pthread.h>
-#include <semaphore.h>
 
 //typedef enum {
 //  PARM_XXX,
@@ -131,7 +130,7 @@ void Serial_write(unsigned char byte){
 ////////////////////////////////////////////////////////////////////////////////
 Display *dpy;
 pthread_t * event_loop;
-sem_t key_waiting;
+char in_waiting;
 unsigned char key;
 
 void run_event_loop(){
@@ -154,7 +153,7 @@ void run_event_loop(){
                  EnterWindowMask |
                  LeaveWindowMask,
                GrabModeAsync,
-               GrabModeAsync,RootWindow(dpy, DefaultScreen(dpy)),
+               GrabModeAsync,None,//RootWindow(dpy, DefaultScreen(dpy)),
                None,
                CurrentTime);
  	XEvent e;
@@ -163,7 +162,7 @@ void run_event_loop(){
     XNextEvent(dpy, &e);
 	if(e.type==MotionNotify){
 	    new_y=0;
-	    new_x=e.xkey.x/(1024/(buffer_columns+2));//TODO get screen size!!!
+	    new_x=e.xkey.x/(1024/(buffer_columns+1));//TODO get screen size!!!
 	    if(x!=new_x||y!=new_y)
 	    {
 	        printf("x:%d y:%d,i:%d\n",e.xkey.x,e.xkey.y,new_x);
@@ -179,10 +178,10 @@ void run_event_loop(){
 	        key=(unsigned char)x;
 	    }else if(x==0){
 	        key=SCROLL_LEFT;
-	    }else if(x==buffer_columns){
+	    }else if(x==(buffer_columns+1)){
 	        key=SCROLL_RIGHT;
 	    }
-	    sem_post(&key_waiting);
+        in_waiting=1;
 	}else{
 	    printf("Other event\n");
 	}
@@ -202,7 +201,6 @@ brl_construct (BrailleDisplay *brl, char **parameters, const char *device) {
   previousCells = malloc(buffer_columns*buffer_rows);
 
   //XLib thread
-  sem_init(&key_waiting, 0, 0);  
   pthread_create(&event_loop,NULL, &run_event_loop,NULL);
   return 1;
 }
@@ -243,11 +241,16 @@ static int getKeyCode(){
 
 static int
 brl_readCommand (BrailleDisplay *brl, KeyTableCommandContext context) {
-  sem_wait(&key_waiting);
-  switch(key){
-      case SCROLL_LEFT: printf("SCROLL_LEFT\n");break;
-      case SCROLL_RIGHT: printf("SCROLL_RIGHT\n");break;
-      default:printf("Keypress%d\n",key);
+  if(in_waiting)
+  {
+    in_waiting=0;
+    switch(key){
+      case SCROLL_LEFT: printf("SCROLL_LEFT\n");
+                        enqueueCommand(BRL_CMD_FWINLT);break;
+      case SCROLL_RIGHT: printf("SCROLL_RIGHT\n");
+                         enqueueCommand(BRL_CMD_FWINRT);break;
+      default:printf("Keypress%d \n",key);
+    }
   }
   return EOF;
 }
