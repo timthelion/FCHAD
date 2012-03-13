@@ -144,16 +144,15 @@ void run_event_loop(){
  
  	scr = DefaultScreen(dpy);
  	rootwin = RootWindow(dpy, scr);
-
+    
     XGrabPointer(dpy, rootwin, True,
                  ButtonPressMask |
-                 ButtonReleaseMask |
                  PointerMotionMask |
                  FocusChangeMask |
                  EnterWindowMask |
                  LeaveWindowMask,
                GrabModeAsync,
-               GrabModeAsync,None,//RootWindow(dpy, DefaultScreen(dpy)),
+               GrabModeAsync,None,
                None,
                CurrentTime);
  	XEvent e;
@@ -173,7 +172,23 @@ void run_event_loop(){
 	        x=new_x;y=new_y;
 	    }
 	}else if(e.type==ButtonPress){
-	    if(x>0&&x<buffer_columns)
+	    if(e.xkey.x<100&&e.xkey.y<100){
+	        printf("Ungrab\n");
+	        XUngrabPointer(dpy, CurrentTime);
+	        XGrabButton(dpy, AnyButton,None, rootwin, False, ButtonPressMask, GrabModeAsync, GrabModeAsync, None, None);
+	        XNextEvent(dpy, &e);
+	        printf("Grab\n");
+            XGrabPointer(dpy, rootwin, True,
+                ButtonPressMask |
+                PointerMotionMask |
+                FocusChangeMask |
+                EnterWindowMask |
+                LeaveWindowMask,
+            GrabModeAsync,
+            GrabModeAsync,None,
+            None,
+            CurrentTime);
+	    }else if(x>0&&x<buffer_columns)
 	    {
 	        key=(unsigned char)x;
 	    }else if(x==0){
@@ -250,6 +265,7 @@ brl_readCommand (BrailleDisplay *brl, KeyTableCommandContext context) {
       case SCROLL_RIGHT: printf("SCROLL_RIGHT\n");
                          enqueueCommand(BRL_CMD_FWINRT);break;
       default:printf("Keypress%d \n",key);
+                enqueueCommand(BRL_BLK_ROUTE + key);
     }
   }
   return EOF;
