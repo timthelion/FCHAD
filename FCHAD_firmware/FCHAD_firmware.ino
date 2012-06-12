@@ -22,12 +22,22 @@
 #define dotCount 6
 const int dotPins[] = {11,13,9,7,3,5};
 
+#define numberOfAnalogIns 3
+const int analogInPins[numberOfAnalogIns] = {A0,A1,A2};
+// Analog input pin that the potentiometer is attached to.
 
-byte nextChar()
-{
-  while(!Serial.available());//Block untill next char is here.
-  return Serial.read();
-}
+#define THRESHHOLD -70
+//The maximum difference in analog value across the test period required to detect contact between finger and sensor.
+#define testINTERVAL 5
+//The how long between tests in milisecconds?
+
+int sensorValues[numberOfAnalogIns] = {0,0,0};
+// Value read from the pot.
+int sensorValuesPre[numberOfAnalogIns] = {0,0,0};
+// Value read from the pot.
+int difs[numberOfAnalogIns] = {0,0,0};
+// The differences between the analog values, between
+// The beginning of the test period and the end.
 
 //////////////////////////////////////////
 ///Display functions//////////////////////
@@ -57,6 +67,17 @@ void displayChar(byte character)
 //////////////////////////////////////////////
 ////Standard initializers/////////////////////
 //////////////////////////////////////////////
+
+unsigned long timeThen = 0;
+unsigned long timeNow;
+
+unsigned char currentlyTouchedSensor = 0;
+bool touchUnchanged;
+//We don't use multitouch support, even though we have it.
+//We only send a signal back to BRLTTY if the focused sensor has
+//changed and the previously touched sensor is no longer being
+//touched.
+
 void setup()
 {
   // initialize the serial communication:
@@ -66,5 +87,33 @@ void setup()
 }
 
 void loop() {
-    displayChar(nextChar());
+  //If a new character is availiable, display it.
+  if(Serial.available()){
+  	displayChar(Serial.read());
+  }
+  //If so much time has passed, check if the
+  //focused cell has changed.  If so, send a message
+  //to brltty.
+  timeNow=millis();
+  //If the time has overflown, or is greater than testINTERVAL milliseconds.
+  if(timeNow < timeThen || timeNow-timeThen > testINTERVAL){
+   // read the analog in value:
+   for(unsigned char i = 0;i < numberOfAnalogIns; i++){
+    sensorValues[i] = analogRead(analogInPins[i]);
+    difs[i]=sensorValues[i]-sensorValuesPre[i];
+    sensorValuesPre[i]=sensorValues[i];
+    if(difs[i]<THRESHHOLD){
+     if(i!=currentlyTouchedSensor){
+      touchUnchaged = 1;
+     }else{
+      currentlyTouchedSensor=i;
+     }
+    }
+    difs[i]=0;
+   }
+   //If the currently touched sensor HAS changed, 
+   if(!touchUnchanged){
+   	Serial.write(currentlyTouchedSensor);
+   }
+  }
 }

@@ -24,9 +24,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include<X11/Xlib.h>
-#include <pthread.h>
-
 //typedef enum {
 //  PARM_XXX,
 //  ...
@@ -40,7 +37,7 @@
 #include "brl_driver.h"
 
 int buffer_columns=20;
-int buffer_rows=1;
+int position = 0;
 
 static unsigned char *previousCells = NULL; /* previous pattern displayed */
 
@@ -125,83 +122,6 @@ void Serial_write(unsigned char byte){
 ////////////////////////////////////////////////////////////////////////////////
 #define SCROLL_LEFT  255
 #define SCROLL_RIGHT 254
-////////////////////////////////////////////////////////////////////////////////
-//XLIB//////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////
-Display *dpy;
-pthread_t * event_loop;
-char in_waiting;
-unsigned char key;
-
-void run_event_loop(){
- 	Window rootwin;
- 	int scr;
- 	GC gc;
- 	if(!(dpy=XOpenDisplay(NULL))) {
- 		fprintf(stderr, "ERROR: could not open display\n");
- 		exit(1);
- 	}
- 
- 	scr = DefaultScreen(dpy);
- 	rootwin = RootWindow(dpy, scr);
-    
-    XGrabPointer(dpy, rootwin, True,
-                 ButtonPressMask |
-                 PointerMotionMask |
-                 FocusChangeMask |
-                 EnterWindowMask |
-                 LeaveWindowMask,
-               GrabModeAsync,
-               GrabModeAsync,None,
-               None,
-               CurrentTime);
- 	XEvent e;
- 	int x,y,new_x,new_y;
-    while(1) {
-    XNextEvent(dpy, &e);
-	if(e.type==MotionNotify){
-	    new_y=0;
-	    new_x=e.xkey.x/(1024/(buffer_columns+1));//TODO get screen size!!!
-	    if(x!=new_x||y!=new_y)
-	    {
-	        printf("x:%d y:%d,i:%d\n",e.xkey.x,e.xkey.y,new_x);
-	        if(x>0&&x<buffer_columns){
-	            Serial_write(previousCells[(x-1)+y*buffer_columns]);
-	            printByte(previousCells[(x-1)+y*buffer_columns]);
-	        }
-	        x=new_x;y=new_y;
-	    }
-	}else if(e.type==ButtonPress){
-	    if(e.xkey.x<100&&e.xkey.y<100){
-	        printf("Ungrab\n");
-	        XUngrabPointer(dpy, CurrentTime);
-	        XGrabButton(dpy, AnyButton,None, rootwin, False, ButtonPressMask, GrabModeAsync, GrabModeAsync, None, None);
-	        XNextEvent(dpy, &e);
-	        printf("Grab\n");
-            XGrabPointer(dpy, rootwin, True,
-                ButtonPressMask |
-                PointerMotionMask |
-                FocusChangeMask |
-                EnterWindowMask |
-                LeaveWindowMask,
-            GrabModeAsync,
-            GrabModeAsync,None,
-            None,
-            CurrentTime);
-	    }else if(x>0&&x<buffer_columns)
-	    {
-	        key=(unsigned char)x;
-	    }else if(x==0){
-	        key=SCROLL_LEFT;
-	    }else if(x==(buffer_columns+1)){
-	        key=SCROLL_RIGHT;
-	    }
-        in_waiting=1;
-	}else{
-	    printf("Other event\n");
-	}
- }
-}
 
 ////////////////////////////////////////////////////////////////////////////////
 //BRLTTY FUNCTIONS//////////////////////////////////////////////////////////////
@@ -212,29 +132,19 @@ brl_construct (BrailleDisplay *brl, char **parameters, const char *device) {
   Serial_init(device);
   //BRLTTY
   brl->textColumns=buffer_columns;
-  brl->textRows=buffer_rows;
-  previousCells = malloc(buffer_columns*buffer_rows);
+  brl->textRows=1;
+  previousCells = malloc(buffer_columns);
 
-  //XLib thread
-  pthread_create(&event_loop,NULL, &run_event_loop,NULL);
   return 1;
 }
 
 static void
 brl_destruct (BrailleDisplay *brl) {
-    XCloseDisplay(dpy);
-}
-
-static int writeWindow(BrailleDisplay *brl, const wchar_t *text){
-    return 1;
 }
 
 static int
 brl_writeWindow (BrailleDisplay *brl, const wchar_t *text) {
- if(cellsHaveChanged(previousCells, brl->buffer, buffer_columns, NULL, NULL))
- {   
-        writeWindow(brl,text);
- }
+ cellsHaveChanged(previousCells, brl->buffer, buffer_columns, NULL, NULL);
  return 1;
 }
 
@@ -254,18 +164,37 @@ static int getKeyCode(){
    // return readInt();
 }
 
+unsigned char currentStripe = 0;
+
+char leftOf(unsigned char key, unsigned char currentStripe){
+	return (key-currentStripe==1||key-currentStripe>2);}
+
+void moveLeft(){
+	position++;
+	if (position > buffer_columns) position = buffer_columns;
+	Serial_write(previousCells[position]);
+}
+
+void moveRight(){
+	position--;
+	if (position < 0) position = 0;
+	Serial_write(previousCells[position]);
+}
+
+unsigned char key;
+
 static int
 brl_readCommand (BrailleDisplay *brl, KeyTableCommandContext context) {
-  if(in_waiting)
+  if(gioAwaitInput(gioEndpoint,0))
   {
-    in_waiting=0;
+    gioReadByte(gioEndpoint, &key,0);
     switch(key){
       case SCROLL_LEFT: printf("SCROLL_LEFT\n");
                         enqueueCommand(BRL_CMD_FWINLT);break;
       case SCROLL_RIGHT: printf("SCROLL_RIGHT\n");
                          enqueueCommand(BRL_CMD_FWINRT);break;
-      default:printf("Keypress%d \n",key);
-                enqueueCommand(BRL_BLK_ROUTE + key);
+      default: if(leftOf(key,currentStripe))moveLeft();
+               else moveRight();
     }
   }
   return EOF;
