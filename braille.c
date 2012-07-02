@@ -61,7 +61,7 @@ or in our case n - 1 of that...
 25
 67
 */
-unsigned char * brailleBits
+static unsigned char brailleBits[8]=
  {
  1,//<<0
  1<<1,
@@ -82,44 +82,44 @@ I didn't want to create a new struct for this.  So I decided to do one of those 
 Space is marked by ' '.
 */
 #define NUMBER_OF_MORSE_LETTERS 37
-wchar_t wcharToMorseTable[][]=
- {"a.-000",//0
-  "b-...0",//1
-  "c-.-.0",//2
-  "d-..00",//3
-  "e.0000",//4
-  "f..-.0",//5
-  "g--.00",//6
-  "h....0",//7
-  "i..000",//8
-  "j.---0",//9
-  "k-.-00",//10
-  "l.-..0",//11
-  "m--000",//12
-  "n-.000",//13
-  "o---00",//14
-  "p.--.0",//15
-  "q--.-0",//16
-  "r.-.00",//17
-  "s...00",//18
-  "t-0000",//19
-  "u..-00",//20
-  "v...-0",//21
-  "w.--00",//22
-  "x-..-0",//23
-  "y-..-0",//24
-  "z--..0",//25
-  "1.----",//26
-  "2..---",//27
-  "3...--",//28
-  "4....-",//29
-  "5.....",//30
-  "6-....",//31
-  "7--...",//32
-  "8---..",//33
-  "9----.",//34
-  "0-----",//35
-  "  0000" //36
+static wchar_t wcharToMorseTable[37][7]=
+ {L"a.-000",//0
+  L"b-...0",//1
+  L"c-.-.0",//2
+  L"d-..00",//3
+  L"e.0000",//4
+  L"f..-.0",//5
+  L"g--.00",//6
+  L"h....0",//7
+  L"i..000",//8
+  L"j.---0",//9
+  L"k-.-00",//10
+  L"l.-..0",//11
+  L"m--000",//12
+  L"n-.000",//13
+  L"o---00",//14
+  L"p.--.0",//15
+  L"q--.-0",//16
+  L"r.-.00",//17
+  L"s...00",//18
+  L"t-0000",//19
+  L"u..-00",//20
+  L"v...-0",//21
+  L"w.--00",//22
+  L"x-..-0",//23
+  L"y-..-0",//24
+  L"z--..0",//25
+  L"1.----",//26
+  L"2..---",//27
+  L"3...--",//28
+  L"4....-",//29
+  L"5.....",//30
+  L"6-....",//31
+  L"7--...",//32
+  L"8---..",//33
+  L"9----.",//34
+  L"0-----",//35
+  L"  0000" //36
   };
 
 /*
@@ -137,7 +137,7 @@ are all expressed in morse units.
 #define MORSE_UNIT 30 
 #define MORSE_SPACE_LENGTH 4
 #define MORSE_DIT_LENGTH 1
-#define MORSE_DAH_LENGHT 2
+#define MORSE_DAH_LENGTH 2
 #define SPACE_BETWEEN_MORSE_CHARS 1
 #define SPACE_BETWEEN_DIT_DAHS 1 
 /*This means that the space between two morse characters will be TWO units in length!  SPACE_BETWEEN_MORSE_CHARS+SPACE_BETWEEN_DIT_DAHS*/
@@ -162,7 +162,7 @@ wchar_t * brailleToBrailleMorse(unsigned char brailleChar)
  /*
  I really don't like this system!  It's WAY to slow(in terms of reading spead, not computational preformance)!!!  Just to test...
  */
- wchar_t * brailleEscapeChar = "..-..";
+ wchar_t * brailleEscapeChar = L"..-..";
  /*
  This is just some unused morse sequence.  It could be anything.  I also considered using a double long dah for the escape code.
  */
@@ -180,10 +180,10 @@ wchar_t * brailleToBrailleMorse(unsigned char brailleChar)
   /*
   Because I couldn't think if a more complicated way of counting to 8 and &'ing the bitmask of each bit in the braille byte.
   */
-   brailleMorseCode[indexInBrailleMorseCodeArray]='-';
+   brailleMorseCode[indexInBrailleMorseCodeArray]=L'-';
    /*Dahs for raised dots*/
   }else{
-   brailleMorseCode[indexInBrailleMorseCodeArray]='.';
+   brailleMorseCode[indexInBrailleMorseCodeArray]=L'.';
    /*Dits for unraised dots*/
   }
   indexInBrailleMorseCodeArray++;
@@ -213,7 +213,7 @@ The return result is a string(array of chars) which is 13 bytes long in which di
 */
 wchar_t * wcharBrailleToMorse(unsigned char braille, const wchar_t text)
 {
- wchar_t * morseFromWChar = lookUpMorse(text,wcharToMorseTable);
+ wchar_t * morseFromWChar = lookUpMorse(text);
 
  /*If there was no morse character which represents that wchar_t character, we change over to printing escaped morse-braille*/
  if(morseFromWChar[0]=='0'){
@@ -255,14 +255,13 @@ When I said booleans back there, I meant unsigned chars where 0 = 0 and 1 = 255.
 
 Our return value is a pointer to the expanded buffer.
 */
-unsigned char * loadMorseBuffer(unsigned char * braille,const wchar_t * text);
+unsigned char * loadMorseBuffer(unsigned char * braille,const wchar_t * text)
 {
  /*A chunk, is a string of textual morse code such as "..." which represents a single wchar_t. In the example case 's'. */
  int morseCharChunkSize=BRAILLE_MORSE_MAX_LENGTH+1;
  //the +1 is there to leave room to add a single null byte between chunks.
  int morseBufferLength = buffer_columns*morseCharChunkSize;
- wchar_t morseBufferAllocated[morseBufferLength];
- morseBuffer=morseBufferAllocated;
+ wchar_t morseBuffer[morseBufferLength];
  int indexInBrlttyBuffer = 0;
  int indexInMorseBuffer = 0;
  wchar_t * currentChunk;
@@ -291,9 +290,9 @@ unsigned char * loadMorseBuffer(unsigned char * braille,const wchar_t * text);
 
   /*Now we expand this buffer out from morse code (dits and dahs expressed by the characters '.','-','\0'[for spaces between characters] and ' '[spaces between words/normal spaces]) into FCHAD code to be sent directly to the device expressed by unsigned bytes 0 and 255.*/
  int indexInExpandedMorseBuffer=0;
- int expandedMorseBufferLength=morseBufferLenght*MAX_EXPANDED_LENGTH;
+ int expandedMorseBufferLength=morseBufferLength*MAX_EXPANDED_LENGTH;
  unsigned char * expandedMorseBuffer[expandedMorseBufferLength];
- int indexInMorseBuffer=0;
+ indexInMorseBuffer=0;
  while(indexInMorseBuffer<morseBufferLength)
  {
   switch(morseBuffer[indexInMorseBuffer]){
@@ -439,7 +438,7 @@ void run_event_loop(){
     printf("x:%d y:%d,i:%d\n",e.xkey.x,e.xkey.y,new_x);
     if(x>0&&x<buffer_columns){
      Serial_write(expandedMorseBuffer[(x-1)+y*buffer_columns]);
-     printByte(previousCells[(x-1)+y*buffer_columns]);
+     printByte(expandedMorseBuffer[(x-1)+y*buffer_columns]);
     }
     x=new_x;y=new_y;
    }
