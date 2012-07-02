@@ -42,9 +42,7 @@
 int buffer_columns=20;
 int buffer_rows=1;
 
-static unsigned char *previousCells = NULL; /* previous pattern displayed */
-
-static wchar_t * expandedMorseBuffer;
+static unsigned char * expandedMorseBuffer;
 
 /////////////////////
 //Braille bits//////
@@ -65,7 +63,7 @@ or in our case n - 1 of that...
 */
 unsigned char * brailleBits
  {
- 1   
+ 1,//<<0
  1<<1,
  1<<2, 
  
@@ -125,7 +123,7 @@ wchar_t wcharToMorseTable[][]=
   };
 
 /*
-The MORSE_UNIT is determined in the pixels traveled by the mouse for each of morse time.
+The MORSE_UNIT is determined in the pixels traveled by the mouse for each unit of morse time.
 
 MORSE_SPACE_LENGTH
 MORSE_DIT_LENGHT
@@ -162,10 +160,13 @@ wchar_t * brailleToBrailleMorse(unsigned char brailleChar)
 {
  wchar_t brailleMorseCode[BRAILLE_MORSE_MAX_LENGTH];
  /*
- I really don't like this system!  It's WAY to slow!!!  Just tto test...
+ I really don't like this system!  It's WAY to slow(in terms of reading spead, not computational preformance)!!!  Just to test...
  */
  wchar_t * brailleEscapeChar = "..-..";
- memcpy(brailleMorseCode, brailleEscapeChar,MORSE_MAX_LENGTH);
+ /*
+ This is just some unused morse sequence.  It could be anything.  I also considered using a double long dah for the escape code.
+ */
+ memcpy(brailleMorseCode, brailleEscapeChar,5);
  /* braille charicters represented like this after the escape char:
  e 10     -.
    01  -> .-  -> -...-... [(-..),(.-.),(..)]
@@ -173,12 +174,17 @@ wchar_t * brailleToBrailleMorse(unsigned char brailleChar)
    00     ..
    */
  #define INDEX_OFFSET_FROM_BRAILLE MORSE_MAX_LENGTH
- int indexInBrailleMorseCodeArray = MORSE_MAX_LENGTH;
+ int indexInBrailleMorseCodeArray = 5;
  while(indexInBrailleMorseCodeArray<BRAILLE_MORSE_MAX_LENGTH){
-  if(brailleChar & brailleBits(indexInBrailleMorseCodeArray-INDEX_OFFSET_FROM_BRAILLE)){
+  if(brailleChar & brailleBits[indexInBrailleMorseCodeArray-INDEX_OFFSET_FROM_BRAILLE]){
+  /*
+  Because I couldn't think if a more complicated way of counting to 8 and &'ing the bitmask of each bit in the braille byte.
+  */
    brailleMorseCode[indexInBrailleMorseCodeArray]='-';
+   /*Dahs for raised dots*/
   }else{
    brailleMorseCode[indexInBrailleMorseCodeArray]='.';
+   /*Dits for unraised dots*/
   }
   indexInBrailleMorseCodeArray++;
  }
@@ -186,7 +192,7 @@ wchar_t * brailleToBrailleMorse(unsigned char brailleChar)
 }
 
 /*
-Returns a 5 byte array representing the morse code of the character given, OR, the string "00000".
+Returns a 5 byte array representing the morse code of the character given, OR, the string "00000" in the case that the given wchar_t does not have a standard US morse code equivalent.
 */
 wchar_t * lookUpMorse(wchar_t wchar){
  wchar_t morseCode[MORSE_MAX_LENGTH];
@@ -209,10 +215,10 @@ wchar_t * wcharBrailleToMorse(unsigned char braille, const wchar_t text)
 {
  wchar_t * morseFromWChar = lookUpMorse(text,wcharToMorseTable);
 
- /*If there was no morse character which represents that ascii character, we change over to printing escaped morse-braille*/
+ /*If there was no morse character which represents that wchar_t character, we change over to printing escaped morse-braille*/
  if(morseFromWChar[0]=='0'){
   return(brailleToBrailleMorse(braille));
- }else{/*If we were lucky, and our ascii character IS represented by a morse one, we still have to fill out the rest of the buffer with '0's*/
+ }else{/*If we were lucky, and our wchar_t character IS represented by a morse one, we still have to fill out the rest of the buffer with '0's*/
   wchar_t morse[BRAILLE_MORSE_MAX_LENGTH];
   memcpy(morse,morseFromWChar,MORSE_MAX_LENGTH);
   int indexInMorse=MORSE_MAX_LENGTH;
@@ -227,8 +233,8 @@ wchar_t * wcharBrailleToMorse(unsigned char braille, const wchar_t text)
 /*
 We use this repeatedly later to add multiple instances of the same character into a buffer...
 buffer = buffer we are writting multiple instances of the same byte into.
-index = start index in that buffer.
-multiplyer = how many times we shoule write our number to the buffer.
+index = start index in buffer.
+multiplyer = how many times we shoule write our byte to the buffer.
 filler = what byte should we write to the buffer
 */
 void expandTo(unsigned char * buffer, int * index,int multiplyer,unsigned char filler){
@@ -239,17 +245,19 @@ void expandTo(unsigned char * buffer, int * index,int multiplyer,unsigned char f
   counter++;
  }
 }
-
 /*
 Every time the brltty buffer is updated, we will reload a new morse buffer...
-This is a two step process.  First we convert the braille_wchar text to morse code.  Then we expand the morse code into an array of booleans which denote on off states of our electromagnet.
+This is a two step process.  First we convert the braille/wchar text to morse code.  Then we expand the morse code into an array of booleans which denote on off states of our electromagnet.
 
-When I say booleans, I mean unsigned chars where 0 = 0 and 1 = 255.  This is because of the way we consume these bytes.  We send them to our FCHAD device as if they were normal braille characters.
+[Of course this algorithm would be more efficient if our wcharToMorseTable was expanded automatically at driver load time.  I didn't think about this though, and I don't think that the preformance difference is worth my coding time to go back and change it.]
 
-Our return value is a pointer to this expanded buffer.
+When I said booleans back there, I meant unsigned chars where 0 = 0 and 1 = 255.  This is because of the way we consume these bytes.  We send them to our FCHAD device as if they were normal braille characters.
+
+Our return value is a pointer to the expanded buffer.
 */
 unsigned char * loadMorseBuffer(unsigned char * braille,const wchar_t * text);
 {
+ /*A chunk, is a string of textual morse code such as "..." which represents a single wchar_t. In the example case 's'. */
  int morseCharChunkSize=BRAILLE_MORSE_MAX_LENGTH+1;
  //the +1 is there to leave room to add a single null byte between chunks.
  int morseBufferLength = buffer_columns*morseCharChunkSize;
@@ -274,9 +282,9 @@ unsigned char * loadMorseBuffer(unsigned char * braille,const wchar_t * text);
    indexInCurrentChunk++;
   }
   /*Now we copy our current chunk into our morseBuffer*/
-  memcpy(&morseBuffer[indexInMorseBuffer],currentChunk,indexInCurrentChunk+SPACE_BETWEEN_MORSE_CHARS+1);
+  memcpy(&morseBuffer[indexInMorseBuffer],currentChunk,indexInCurrentChunk+1);
   indexInMorseBuffer=indexInMorseBuffer+indexInCurrentChunk+1;
-  /*Add a few spaces between the chars*/
+  /*Add a space between the chars*/
   morseBuffer[indexInMorseBuffer]='\0';
   indexInMorseBuffer++;
  }
@@ -319,7 +327,7 @@ unsigned char * loadMorseBuffer(unsigned char * braille,const wchar_t * text);
 #define SERIAL_INPUT_TIMEOUT 100
 #define SERIAL_WAIT_TIMEOUT 200
 static GioEndpoint *gioEndpoint = NULL;
-int serial_wait_time = 0;
+int serial_wait_time = 0;//TODO???
 
 static void printByte(unsigned char byte)
 {
@@ -400,72 +408,71 @@ char in_waiting;
 unsigned char key;
 
 void run_event_loop(){
- 	Window rootwin;
- 	int scr;
- 	GC gc;
- 	if(!(dpy=XOpenDisplay(NULL))) {
- 		fprintf(stderr, "ERROR: could not open display\n");
- 		exit(1);
- 	}
+ Window rootwin;
+ int scr;
+ GC gc;
+ if(!(dpy=XOpenDisplay(NULL))) {
+  fprintf(stderr, "ERROR: could not open display\n");
+  exit(1);
+ }
  
- 	scr = DefaultScreen(dpy);
- 	rootwin = RootWindow(dpy, scr);
+ scr = DefaultScreen(dpy);
+ rootwin = RootWindow(dpy, scr);
     
-    XGrabPointer(dpy, rootwin, True,
+ XGrabPointer(dpy, rootwin, True,
                  ButtonPressMask |
-                 PointerMotionMask |
-                 FocusChangeMask |
-                 EnterWindowMask |
-                 LeaveWindowMask,
+                 PointerMotionMask,
                GrabModeAsync,
                GrabModeAsync,None,
                None,
                CurrentTime);
- 	XEvent e;
- 	int x,y,new_x,new_y;
-    while(1) {
+ XEvent e;
+ int x,y,new_x,new_y;
+ while(1) {
+  XNextEvent(dpy, &e);
+  if(e.type==MotionNotify){
+  /*If the mouse moved, we update our x cordinate(our place in the buffer), then we send new information about what character is being displayed to our FCHAD device.*/
+   new_y=0;
+   new_x=e.xkey.x/(1024/(buffer_columns+1));//TODO get screen size!!!
+   //TODO this code is just plain WRONG!!! We shouldn't be basing x off buffer_columns but off the length of expandedMorseBuffer, I'm not going to fix it though, since all this code is obsolete.  It should be soon replaced by XI2 code which uses mouse movement rather than mouse position.
+   if(x!=new_x||y!=new_y){
+    printf("x:%d y:%d,i:%d\n",e.xkey.x,e.xkey.y,new_x);
+    if(x>0&&x<buffer_columns){
+     Serial_write(expandedMorseBuffer[(x-1)+y*buffer_columns]);
+     printByte(previousCells[(x-1)+y*buffer_columns]);
+    }
+    x=new_x;y=new_y;
+   }
+  }else if(e.type==ButtonPress){
+  /*If the mouse button was pressed, we have a choice of 4 possible actions.
+  1)We can ungrab the mouse if the keypress was in the top left corner of the screen.   This allows other applications to gain mouse grab.  Hopfully, this hack can be replaced by proper use of XI2.
+  2)We can send a braille key press signal for the currently highlighed cell in our buffer.
+  3 and 4) we can send scroll signals to brltty if we are at the edges of the screen.
+  */
+   if(e.xkey.x<100&&e.xkey.y<100){
+    printf("Ungrab\n");
+    XUngrabPointer(dpy, CurrentTime);
+    XGrabButton(dpy, AnyButton,None, rootwin, False, ButtonPressMask, GrabModeAsync, GrabModeAsync, None, None);
     XNextEvent(dpy, &e);
-	if(e.type==MotionNotify){
-	    new_y=0;
-	    new_x=e.xkey.x/(1024/(buffer_columns+1));//TODO get screen size!!!
-	    if(x!=new_x||y!=new_y)
-	    {
-	        printf("x:%d y:%d,i:%d\n",e.xkey.x,e.xkey.y,new_x);
-	        if(x>0&&x<buffer_columns){
-	            Serial_write(previousCells[(x-1)+y*buffer_columns]);
-	            printByte(previousCells[(x-1)+y*buffer_columns]);
-	        }
-	        x=new_x;y=new_y;
-	    }
-	}else if(e.type==ButtonPress){
-	    if(e.xkey.x<100&&e.xkey.y<100){
-	        printf("Ungrab\n");
-	        XUngrabPointer(dpy, CurrentTime);
-	        XGrabButton(dpy, AnyButton,None, rootwin, False, ButtonPressMask, GrabModeAsync, GrabModeAsync, None, None);
-	        XNextEvent(dpy, &e);
-	        printf("Grab\n");
-            XGrabPointer(dpy, rootwin, True,
+    printf("Grab\n");
+    XGrabPointer(dpy, rootwin, True,
                 ButtonPressMask |
-                PointerMotionMask |
-                FocusChangeMask |
-                EnterWindowMask |
-                LeaveWindowMask,
+                PointerMotionMask,
             GrabModeAsync,
             GrabModeAsync,None,
             None,
             CurrentTime);
-	    }else if(x>0&&x<buffer_columns)
-	    {
-	        key=(unsigned char)x;
-	    }else if(x==0){
-	        key=SCROLL_LEFT;
-	    }else if(x==(buffer_columns+1)){
-	        key=SCROLL_RIGHT;
-	    }
-        in_waiting=1;
-	}else{
-	    printf("Other event\n");
-	}
+   }else if(x>0&&x<buffer_columns){
+    key=(unsigned char)x;
+   }else if(x==0){
+    key=SCROLL_LEFT;
+   }else if(x==(buffer_columns+1)){
+    key=SCROLL_RIGHT;
+   }
+   in_waiting=1;
+  }else{
+   printf("Other event\n");
+  }
  }
 }
 
@@ -479,7 +486,6 @@ brl_construct (BrailleDisplay *brl, char **parameters, const char *device) {
   //BRLTTY
   brl->textColumns=buffer_columns;
   brl->textRows=buffer_rows;
-  previousCells = malloc(buffer_columns*buffer_rows);
 
   //XLib thread
   pthread_create(&event_loop,NULL, &run_event_loop,NULL);
@@ -488,19 +494,19 @@ brl_construct (BrailleDisplay *brl, char **parameters, const char *device) {
 
 static void
 brl_destruct (BrailleDisplay *brl) {
-    XCloseDisplay(dpy);
+ XCloseDisplay(dpy);
 }
 
 static int
 brl_writeWindow (BrailleDisplay *brl, const wchar_t *text) {
- previousCells= loadMorseBuffer(brl->buffer,text);
+ expandedMorseBuffer = loadMorseBuffer(brl->buffer,text);
  return 1;
 }
 
 #ifdef BRL_HAVE_KEY_CODES
 static int
 brl_readKey (BrailleDisplay *brl) {
-  return EOF;
+ return EOF;
 }
 
 static int
@@ -515,17 +521,20 @@ static int getKeyCode(){
 
 static int
 brl_readCommand (BrailleDisplay *brl, KeyTableCommandContext context) {
-  if(in_waiting)
-  {
-    in_waiting=0;
-    switch(key){
-      case SCROLL_LEFT: printf("SCROLL_LEFT\n");
-                        enqueueCommand(BRL_CMD_FWINLT);break;
-      case SCROLL_RIGHT: printf("SCROLL_RIGHT\n");
-                         enqueueCommand(BRL_CMD_FWINRT);break;
-      default:printf("Keypress%d \n",key);
-                enqueueCommand(BRL_BLK_ROUTE + key);
-    }
+ if(in_waiting)
+ {
+  in_waiting=0;
+  switch(key){
+   case SCROLL_LEFT:
+    printf("SCROLL_LEFT\n");
+    enqueueCommand(BRL_CMD_FWINLT);break;
+   case SCROLL_RIGHT:
+    printf("SCROLL_RIGHT\n");
+    enqueueCommand(BRL_CMD_FWINRT);break;
+   default:
+    printf("Keypress%d \n",key);
+    enqueueCommand(BRL_BLK_ROUTE + key);
   }
-  return EOF;
+ }
+ return EOF;
 }
