@@ -1,3 +1,13 @@
+HOW TO BUILD AND RUN:
+
+Download and extract the latest tar.gz file from:
+
+http://mielke.cc/brltty/download.html
+
+This code base has been tested with brltty4.3
+
+Apply the changes described by config.mk.diff to config.mk in the top
+
 WHAT is an FCHAD?
 An FCHAD is a Fast CHaricter braille Display.  That is, it's a braille display
 that displays one charicter at a time, and can change which charicter it is
