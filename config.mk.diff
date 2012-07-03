@@ -1,0 +1,12 @@
+51,152c151,152
+< BRAILLE_DRIVER_CODES = al at ba bc bd bl bm bn cb ec eu fs hm ht il lt mb md mn mt pg pm sk tn ts tt vd vo vr vs xw
+< BRAILLE_DRIVER_NAMES = Alva Albatross BrlAPI BrailComm Braudi BrailleLite Baum BrailleNote CombiBraille EcoBraille EuroBraille FreedomScientific HIMS HandyTech IrisLinux LogText MultiBraille MDV MiniBraille Metec Pegasus Papenmeier Seika TechniBraille TSI TTY VideoBraille Voyager Virtual VisioBraille XWindow
+---
+> BRAILLE_DRIVER_CODES = al at ba bc bd bl bm bn cb ec eu fc fs hm ht il lt mb md mn mt pg pm sk tn ts tt vd vo vr vs xw
+> BRAILLE_DRIVER_NAMES = Alva Albatross BrlAPI BrailComm Braudi BrailleLite Baum BrailleNote CombiBraille EcoBraille EuroBraille FCHAD FreedomScientific HIMS HandyTech IrisLinux LogText MultiBraille MDV MiniBraille Metec Pegasus Papenmeier Seika TechniBraille TSI TTY VideoBraille Voyager Virtual VisioBraille XWindow
+155,156c155,156
+< BRAILLE_EXTERNAL_DRIVER_CODES = al at ba bc bd bl bm bn cb ec eu fs hm ht il lt mb md mn mt pg pm sk tn ts tt vd vo vr vs xw
+< BRAILLE_EXTERNAL_DRIVER_NAMES = Alva Albatross BrlAPI BrailComm Braudi BrailleLite Baum BrailleNote CombiBraille EcoBraille EuroBraille FreedomScientific HIMS HandyTech IrisLinux LogText MultiBraille MDV MiniBraille Metec Pegasus Papenmeier Seika TechniBraille TSI TTY VideoBraille Voyager Virtual VisioBraille XWindow
+---
+> BRAILLE_EXTERNAL_DRIVER_CODES = al at ba bc bd bl bm bn cb ec eu fc fs hm ht il lt mb md mn mt pg pm sk tn ts tt vd vo vr vs xw
+> BRAILLE_EXTERNAL_DRIVER_NAMES = Alva Albatross BrlAPI BrailComm Braudi BrailleLite Baum BrailleNote CombiBraille EcoBraille EuroBraille FCHAD FreedomScientific HIMS HandyTech IrisLinux LogText MultiBraille MDV MiniBraille Metec Pegasus Papenmeier Seika TechniBraille TSI TTY VideoBraille Voyager Virtual VisioBraille XWindow
