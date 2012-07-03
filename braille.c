@@ -39,10 +39,51 @@
 //#define BRL_HAVE_KEY_CODES
 #include "brl_driver.h"
 
-int buffer_columns=20;
-int buffer_rows=1;
+#define BUFFER_COLUMNS 20
+#define BUFFER_ROWS 1
 
-static unsigned char * expandedMorseBuffer;
+/*
+The MORSE_UNIT is determined in the pixels traveled by the mouse for each unit of morse time.
+
+MORSE_SPACE_LENGTH
+MORSE_DIT_LENGHT
+MOSE_DAH_LENGTH
+SPACE_BETWEEN_MORSE_CHARS
+SPACE_BETWEEN_DIT_DAHS
+MAX_EXPANDED_LENGTH
+
+are all expressed in morse units.
+*/
+#define MORSE_UNIT 30 
+#define MORSE_SPACE_LENGTH 4
+#define MORSE_DIT_LENGTH 1
+#define MORSE_DAH_LENGTH 2
+#define SPACE_BETWEEN_MORSE_CHARS 1
+#define SPACE_BETWEEN_DIT_DAHS 1 
+/*This means that the space between two morse characters will be TWO units in length!  SPACE_BETWEEN_MORSE_CHARS+SPACE_BETWEEN_DIT_DAHS*/
+#define MAX_EXPANDED_LENGTH MORSE_SPACE_LENGTH
+/*
+If MORSE_DAH_LENGTH was 3, for example, then MAX_EXPANDED_LENGTH would be 5: MORSE_DAH_LENGTH + SPACE_BETWEEN_DIT_DAHS + SPACE_BETWEN_MORSE_CHARS
+*/
+/*
+MORSE_MAX_LENGHT and BRAILLE_MORSE_MAX_LENGTH define the number of bytes used to express one morse character and one braille morse character.
+*/
+#define MORSE_MAX_LENGTH 5
+#define BRAILLE_MORSE_MAX_LENGTH 13
+
+/*This buffer is filled in by brailleToBrailleMorse*/
+wchar_t brailleMorseCode[BRAILLE_MORSE_MAX_LENGTH];
+
+/*This buffer is filled in by wcharBrailleToMorse*/
+wchar_t morse[BRAILLE_MORSE_MAX_LENGTH];
+
+
+/*A chunk, is a string of textual morse code such as "..." which represents a single wchar_t. In the example case 's'. */
+#define MORSE_CHAR_CHUNK_SIZE BRAILLE_MORSE_MAX_LENGTH+1
+#define MORSE_BUFFER_LENGTH BUFFER_COLUMNS*MORSE_CHAR_CHUNK_SIZE
+#define EXPANDED_MORSE_BUFFER_LENGTH MORSE_BUFFER_LENGTH*MAX_EXPANDED_LENGTH
+
+static unsigned char expandedMorseBuffer[EXPANDED_MORSE_BUFFER_LENGTH];
 
 /////////////////////
 //Braille bits//////
@@ -123,42 +164,13 @@ static wchar_t wcharToMorseTable[37][7]=
   };
 
 /*
-The MORSE_UNIT is determined in the pixels traveled by the mouse for each unit of morse time.
-
-MORSE_SPACE_LENGTH
-MORSE_DIT_LENGHT
-MOSE_DAH_LENGTH
-SPACE_BETWEEN_MORSE_CHARS
-SPACE_BETWEEN_DIT_DAHS
-MAX_EXPANDED_LENGTH
-
-are all expressed in morse units.
-*/
-#define MORSE_UNIT 30 
-#define MORSE_SPACE_LENGTH 4
-#define MORSE_DIT_LENGTH 1
-#define MORSE_DAH_LENGTH 2
-#define SPACE_BETWEEN_MORSE_CHARS 1
-#define SPACE_BETWEEN_DIT_DAHS 1 
-/*This means that the space between two morse characters will be TWO units in length!  SPACE_BETWEEN_MORSE_CHARS+SPACE_BETWEEN_DIT_DAHS*/
-#define MAX_EXPANDED_LENGTH MORSE_SPACE_LENGTH
-/*
-If MORSE_DAH_LENGTH was 3, for example, then MAX_EXPANDED_LENGTH would be 5: MORSE_DAH_LENGTH + SPACE_BETWEEN_DIT_DAHS + SPACE_BETWEN_MORSE_CHARS
-*/
-/*
-MORSE_MAX_LENGHT and BRAILLE_MORSE_MAX_LENGTH define the number of bytes used to express one morse character and one braille morse character.
-*/
-#define MORSE_MAX_LENGTH 5
-#define BRAILLE_MORSE_MAX_LENGTH 13
-/*
 Since many characters cannot be represented at all with the morse code we need some way of presenting them to our users.  So I made a way of escaping special characters with an unused 5 dit/dah code.  After that follows an 8dit/dah braille character encoded into dit/dah form and in the order of the weird braille dot numbering system described above...  This is not a good way of presenting data, but I don't have time right now to do it correctly.  Perhaps a better way to encorporate this would be to actually, for example, write out asterisc for a '*'.  This would also be slow, but at least it might be learnable...
 
 This function returns a 13 byte string.(period, it is ALWAYS 13 bytes, without any null escape sequence at the end :D)
 
 */
-wchar_t * brailleToBrailleMorse(unsigned char brailleChar)
+void brailleToBrailleMorse(unsigned char brailleChar)
 {
- wchar_t brailleMorseCode[BRAILLE_MORSE_MAX_LENGTH];
  /*
  I really don't like this system!  It's WAY to slow(in terms of reading spead, not computational preformance)!!!  Just to test...
  */
@@ -188,14 +200,12 @@ wchar_t * brailleToBrailleMorse(unsigned char brailleChar)
   }
   indexInBrailleMorseCodeArray++;
  }
- return(brailleMorseCode);
 }
 
 /*
 Returns a 5 byte array representing the morse code of the character given, OR, the string "00000" in the case that the given wchar_t does not have a standard US morse code equivalent.
 */
 wchar_t * lookUpMorse(wchar_t wchar){
- wchar_t morseCode[MORSE_MAX_LENGTH];
  int indexInWCharToMorseTable = 0;
  while(indexInWCharToMorseTable<NUMBER_OF_MORSE_LETTERS){
   if(wcharToMorseTable[indexInWCharToMorseTable][0]==wchar){
@@ -203,7 +213,7 @@ wchar_t * lookUpMorse(wchar_t wchar){
   }
   indexInWCharToMorseTable++;
  }
- return("00000");
+ return(L"00000");
 }
 
 /*
@@ -217,9 +227,9 @@ wchar_t * wcharBrailleToMorse(unsigned char braille, const wchar_t text)
 
  /*If there was no morse character which represents that wchar_t character, we change over to printing escaped morse-braille*/
  if(morseFromWChar[0]=='0'){
-  return(brailleToBrailleMorse(braille));
+  brailleToBrailleMorse(braille);
+  return(brailleMorseCode);
  }else{/*If we were lucky, and our wchar_t character IS represented by a morse one, we still have to fill out the rest of the buffer with '0's*/
-  wchar_t morse[BRAILLE_MORSE_MAX_LENGTH];
   memcpy(morse,morseFromWChar,MORSE_MAX_LENGTH);
   int indexInMorse=MORSE_MAX_LENGTH;
   while(indexInMorse<BRAILLE_MORSE_MAX_LENGTH){
@@ -227,7 +237,7 @@ wchar_t * wcharBrailleToMorse(unsigned char braille, const wchar_t text)
   }
   return(morse);
  }
- return("Error");//WE NEVER GET THIS FAR...
+ return(L"Error");//WE NEVER GET THIS FAR...
 }
 
 /*
@@ -253,21 +263,17 @@ This is a two step process.  First we convert the braille/wchar text to morse co
 
 When I said booleans back there, I meant unsigned chars where 0 = 0 and 1 = 255.  This is because of the way we consume these bytes.  We send them to our FCHAD device as if they were normal braille characters.
 
-Our return value is a pointer to the expanded buffer.
 */
-unsigned char * loadMorseBuffer(unsigned char * braille,const wchar_t * text)
+void loadMorseBuffer(unsigned char * braille,const wchar_t * text)
 {
- /*A chunk, is a string of textual morse code such as "..." which represents a single wchar_t. In the example case 's'. */
- int morseCharChunkSize=BRAILLE_MORSE_MAX_LENGTH+1;
  //the +1 is there to leave room to add a single null byte between chunks.
- int morseBufferLength = buffer_columns*morseCharChunkSize;
- wchar_t morseBuffer[morseBufferLength];
+ wchar_t morseBuffer[MORSE_BUFFER_LENGTH];
  int indexInBrlttyBuffer = 0;
  int indexInMorseBuffer = 0;
  wchar_t * currentChunk;
  int indexInCurrentChunk;//Used later in the loop, established now to save on memory allocation time.
 
- while(indexInBrlttyBuffer<buffer_columns){
+ while(indexInBrlttyBuffer<BUFFER_COLUMNS){
   /*
   We convert the braille-wchar_t character to morse code.
   */
@@ -276,7 +282,7 @@ unsigned char * loadMorseBuffer(unsigned char * braille,const wchar_t * text)
   Now we have to figure out how long our current chunk actually is.
   */
   indexInCurrentChunk=0;
-  while(indexInCurrentChunk<morseCharChunkSize){
+  while(indexInCurrentChunk<MORSE_CHAR_CHUNK_SIZE){
    if(currentChunk[indexInCurrentChunk]=='0')break;
    indexInCurrentChunk++;
   }
@@ -290,10 +296,8 @@ unsigned char * loadMorseBuffer(unsigned char * braille,const wchar_t * text)
 
   /*Now we expand this buffer out from morse code (dits and dahs expressed by the characters '.','-','\0'[for spaces between characters] and ' '[spaces between words/normal spaces]) into FCHAD code to be sent directly to the device expressed by unsigned bytes 0 and 255.*/
  int indexInExpandedMorseBuffer=0;
- int expandedMorseBufferLength=morseBufferLength*MAX_EXPANDED_LENGTH;
- unsigned char * expandedMorseBuffer[expandedMorseBufferLength];
  indexInMorseBuffer=0;
- while(indexInMorseBuffer<morseBufferLength)
+ while(indexInMorseBuffer<MORSE_BUFFER_LENGTH)
  {
   switch(morseBuffer[indexInMorseBuffer]){
    case '\0':
@@ -315,6 +319,10 @@ unsigned char * loadMorseBuffer(unsigned char * braille,const wchar_t * text)
     break;
   }
   indexInMorseBuffer++;
+ }
+ /*Fill out the rest of the buffer with blanks.*/
+ while(indexInExpandedMorseBuffer<EXPANDED_MORSE_BUFFER_LENGTH){
+  expandedMorseBuffer[indexInExpandedMorseBuffer]=0;
  }
 }
 ////////////////////////////////////////////////////////////////////////////////
@@ -409,7 +417,7 @@ unsigned char key;
 void run_event_loop(){
  Window rootwin;
  int scr;
- GC gc;
+ GC gc;//TODO, what is this value and why was it here?
  if(!(dpy=XOpenDisplay(NULL))) {
   fprintf(stderr, "ERROR: could not open display\n");
   exit(1);
@@ -426,19 +434,18 @@ void run_event_loop(){
                None,
                CurrentTime);
  XEvent e;
- int x,y,new_x,new_y;
+ int x,y,new_x,new_y=0;
  while(1) {
   XNextEvent(dpy, &e);
   if(e.type==MotionNotify){
   /*If the mouse moved, we update our x cordinate(our place in the buffer), then we send new information about what character is being displayed to our FCHAD device.*/
    new_y=0;
-   new_x=e.xkey.x/(1024/(buffer_columns+1));//TODO get screen size!!!
-   //TODO this code is just plain WRONG!!! We shouldn't be basing x off buffer_columns but off the length of expandedMorseBuffer, I'm not going to fix it though, since all this code is obsolete.  It should be soon replaced by XI2 code which uses mouse movement rather than mouse position.
+   new_x=e.xkey.x/(1024/(EXPANDED_MORSE_BUFFER_LENGTH+1));//TODO get screen size!!!
    if(x!=new_x||y!=new_y){
     printf("x:%d y:%d,i:%d\n",e.xkey.x,e.xkey.y,new_x);
-    if(x>0&&x<buffer_columns){
-     Serial_write(expandedMorseBuffer[(x-1)+y*buffer_columns]);
-     printByte(expandedMorseBuffer[(x-1)+y*buffer_columns]);
+    if(x>0&&x<(EXPANDED_MORSE_BUFFER_LENGTH)){
+     Serial_write(expandedMorseBuffer[(x-1)+y*(EXPANDED_MORSE_BUFFER_LENGTH)]);
+     printByte(expandedMorseBuffer[(x-1)+y*(EXPANDED_MORSE_BUFFER_LENGTH)]);
     }
     x=new_x;y=new_y;
    }
@@ -461,11 +468,11 @@ void run_event_loop(){
             GrabModeAsync,None,
             None,
             CurrentTime);
-   }else if(x>0&&x<buffer_columns){
-    key=(unsigned char)x;
+   }else if(x>0&&x<EXPANDED_MORSE_BUFFER_LENGTH){
+    key=(unsigned char)x;//TODO TODO, we shouldn't base this off x.  We need to create a NEW array which links cordinates in the expandedMorseBuffer to the cordinates of the brl->braillebuffer...
    }else if(x==0){
     key=SCROLL_LEFT;
-   }else if(x==(buffer_columns+1)){
+   }else if(x==(EXPANDED_MORSE_BUFFER_LENGTH+1)){
     key=SCROLL_RIGHT;
    }
    in_waiting=1;
@@ -483,11 +490,11 @@ brl_construct (BrailleDisplay *brl, char **parameters, const char *device) {
   //SERIAL
   Serial_init(device);
   //BRLTTY
-  brl->textColumns=buffer_columns;
-  brl->textRows=buffer_rows;
+  brl->textColumns=BUFFER_COLUMNS;
+  brl->textRows=BUFFER_ROWS;
 
   //XLib thread
-  pthread_create(&event_loop,NULL, &run_event_loop,NULL);
+  pthread_create(event_loop,NULL, &run_event_loop,NULL);
   return 1;
 }
 
@@ -498,7 +505,7 @@ brl_destruct (BrailleDisplay *brl) {
 
 static int
 brl_writeWindow (BrailleDisplay *brl, const wchar_t *text) {
- expandedMorseBuffer = loadMorseBuffer(brl->buffer,text);
+ loadMorseBuffer(brl->buffer,text);
  return 1;
 }
 
@@ -516,6 +523,7 @@ brl_keyToCommand (BrailleDisplay *brl, KeyTableCommandContext context, int key) 
 
 static int getKeyCode(){
    // return readInt();
+   return 0;
 }
 
 static int
