@@ -1,0 +1,20 @@
+--- ../../../brltty-4.3-clean/src/brltty-4.3/config.mk	2012-06-01 00:13:13.996793712 +0200
++++ config.mk	2012-06-13 01:42:08.605198098 +0200
+@@ -148,34 +148,34 @@
+ 
+ MANUAL_DIRECTORIES =  Documents/Manual-BRLTTY/English Documents/Manual-BRLTTY/French Documents/Manual-BrlAPI/English
+ 
+-BRAILLE_DRIVER_CODES = al at ba bc bd bl bm bn cb ec eu fs hm ht il lt mb md mn mt pg pm sk tn ts tt vd vo vr vs xw
+-BRAILLE_DRIVER_NAMES = Alva Albatross BrlAPI BrailComm Braudi BrailleLite Baum BrailleNote CombiBraille EcoBraille EuroBraille FreedomScientific HIMS HandyTech IrisLinux LogText MultiBraille MDV MiniBraille Metec Pegasus Papenmeier Seika TechniBraille TSI TTY VideoBraille Voyager Virtual VisioBraille XWindow
++BRAILLE_DRIVER_CODES = al at ba bc bd bl bm bn cb ec eu fc fs hm ht il lt mb md mn mt pg pm sk tn ts tt vd vo vr vs xw
++BRAILLE_DRIVER_NAMES = Alva Albatross BrlAPI BrailComm Braudi BrailleLite Baum BrailleNote CombiBraille EcoBraille EuroBraille FCHAD FreedomScientific HIMS HandyTech IrisLinux LogText MultiBraille MDV MiniBraille Metec Pegasus Papenmeier Seika TechniBraille TSI TTY VideoBraille Voyager Virtual VisioBraille XWindow
+ BRAILLE_INTERNAL_DRIVER_CODES = 
+ BRAILLE_INTERNAL_DRIVER_NAMES = 
+-BRAILLE_EXTERNAL_DRIVER_CODES = al at ba bc bd bl bm bn cb ec eu fs hm ht il lt mb md mn mt pg pm sk tn ts tt vd vo vr vs xw
+-BRAILLE_EXTERNAL_DRIVER_NAMES = Alva Albatross BrlAPI BrailComm Braudi BrailleLite Baum BrailleNote CombiBraille EcoBraille EuroBraille FreedomScientific HIMS HandyTech IrisLinux LogText MultiBraille MDV MiniBraille Metec Pegasus Papenmeier Seika TechniBraille TSI TTY VideoBraille Voyager Virtual VisioBraille XWindow
++BRAILLE_EXTERNAL_DRIVER_CODES = al at ba bc bd bl bm bn cb ec eu fc fs hm ht il lt mb md mn mt pg pm sk tn ts tt vd vo vr vs xw
++BRAILLE_EXTERNAL_DRIVER_NAMES = Alva Albatross BrlAPI BrailComm Braudi BrailleLite Baum BrailleNote CombiBraille EcoBraille EuroBraille FCHAD FreedomScientific HIMS HandyTech IrisLinux LogText MultiBraille MDV MiniBraille Metec Pegasus Papenmeier Seika TechniBraille TSI TTY VideoBraille Voyager Virtual VisioBraille XWindow
+ BRAILLE_DRIVER_OBJECTS = 
+ BRAILLE_DRIVER_LIBRARIES = 
+ BRAILLE_DRIVERS = braille-drivers
+ 
