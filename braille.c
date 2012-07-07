@@ -178,7 +178,7 @@ void brailleToBrailleMorse(unsigned char brailleChar)
  /*
  This is just some unused morse sequence.  It could be anything.  I also considered using a double long dah for the escape code.
  */
- memcpy(brailleMorseCode, brailleEscapeChar,5);
+ memcpy(brailleMorseCode, brailleEscapeChar,5*sizeof(wchar_t));
  /* braille charicters represented like this after the escape char:
  e 10     -.
    01  -> .-  -> -...-... [(-..),(.-.),(..)]
@@ -230,10 +230,11 @@ wchar_t * wcharBrailleToMorse(unsigned char braille, const wchar_t text)
   brailleToBrailleMorse(braille);
   return(brailleMorseCode);
  }else{/*If we were lucky, and our wchar_t character IS represented by a morse one, we still have to fill out the rest of the buffer with '0's*/
-  memcpy(morse,morseFromWChar,MORSE_MAX_LENGTH);
+  memcpy(morse,morseFromWChar,MORSE_MAX_LENGTH*sizeof(wchar_t));
   int indexInMorse=MORSE_MAX_LENGTH;
   while(indexInMorse<BRAILLE_MORSE_MAX_LENGTH){
    morse[indexInMorse]='0';
+   indexInMorse++;
   }
   return(morse);
  }
@@ -251,7 +252,7 @@ void expandTo(unsigned char * buffer, int * index,int multiplyer,unsigned char f
  int counter = 0;
  while(counter<multiplyer){
   buffer[*index]=filler;
-  *index++;
+  (*index)++;
   counter++;
  }
 }
@@ -272,12 +273,12 @@ void loadMorseBuffer(unsigned char * braille,const wchar_t * text)
  int indexInMorseBuffer = 0;
  wchar_t * currentChunk;
  int indexInCurrentChunk;//Used later in the loop, established now to save on memory allocation time.
-
  while(indexInBrlttyBuffer<BUFFER_COLUMNS){
   /*
   We convert the braille-wchar_t character to morse code.
   */
   currentChunk=wcharBrailleToMorse(braille[indexInBrlttyBuffer],text[indexInBrlttyBuffer]);
+  //printf("currentChunk:%Ls",currentChunk);
   /*
   Now we have to figure out how long our current chunk actually is.
   */
@@ -287,35 +288,47 @@ void loadMorseBuffer(unsigned char * braille,const wchar_t * text)
    indexInCurrentChunk++;
   }
   /*Now we copy our current chunk into our morseBuffer*/
-  memcpy(&morseBuffer[indexInMorseBuffer],currentChunk,indexInCurrentChunk+1);
-  indexInMorseBuffer=indexInMorseBuffer+indexInCurrentChunk+1;
+  memcpy(&morseBuffer[indexInMorseBuffer],currentChunk,(indexInCurrentChunk+1)*sizeof(wchar_t));
+  indexInMorseBuffer=indexInMorseBuffer+indexInCurrentChunk;
   /*Add a space between the chars*/
-  morseBuffer[indexInMorseBuffer]='\0';
-  indexInMorseBuffer++;
+  morseBuffer[indexInMorseBuffer]=L'\0';
+  indexInBrlttyBuffer++;
+  //printf("Working %d/%d\n",indexInBrlttyBuffer,BUFFER_COLUMNS);
  }
-
+ /*Now we fill out the rest of the buffer with blanks*/
+ while(indexInMorseBuffer<MORSE_BUFFER_LENGTH){
+  morseBuffer[indexInMorseBuffer++]=L' ';
+ }
+ printf("START\n");
+ //printf("Converted to morse, expanding now.\n");
   /*Now we expand this buffer out from morse code (dits and dahs expressed by the characters '.','-','\0'[for spaces between characters] and ' '[spaces between words/normal spaces]) into FCHAD code to be sent directly to the device expressed by unsigned bytes 0 and 255.*/
  int indexInExpandedMorseBuffer=0;
  indexInMorseBuffer=0;
  while(indexInMorseBuffer<MORSE_BUFFER_LENGTH)
  {
+  //printf("Working %d/%d\n",indexInMorseBuffer,MORSE_BUFFER_LENGTH);
   switch(morseBuffer[indexInMorseBuffer]){
-   case '\0':
+   case L'\0':
+    //printf("Matched \\0\n");
     expandTo(expandedMorseBuffer,&indexInExpandedMorseBuffer,SPACE_BETWEEN_MORSE_CHARS,0);
     break;
-   case ' ':
+   case L' ':
+    //printf("Matched ' '\n");
     expandTo(expandedMorseBuffer,&indexInExpandedMorseBuffer,MORSE_SPACE_LENGTH,0);
     break;
-   case '.':
+   case L'.':
+    //printf("Matched '.'\n");
     expandTo(expandedMorseBuffer,&indexInExpandedMorseBuffer,MORSE_DIT_LENGTH,255);
     expandTo(expandedMorseBuffer,&indexInExpandedMorseBuffer,SPACE_BETWEEN_DIT_DAHS,0);
     break;
-   case '-':
+   case L'-':
+    //printf("Matched '-'\n");
     expandTo(expandedMorseBuffer,&indexInExpandedMorseBuffer,MORSE_DAH_LENGTH,255);
     expandTo(expandedMorseBuffer,&indexInExpandedMorseBuffer,SPACE_BETWEEN_DIT_DAHS,0);
     break;
    default:
     printf("OH MY!!!  WHAT SHALL I DO???  I don't know how to handle a morse code represented by the character:%c\n",morseBuffer[indexInMorseBuffer]);
+    printf("%d",morseBuffer[indexInMorseBuffer]);
     break;
   }
   indexInMorseBuffer++;
@@ -324,17 +337,18 @@ void loadMorseBuffer(unsigned char * braille,const wchar_t * text)
  while(indexInExpandedMorseBuffer<EXPANDED_MORSE_BUFFER_LENGTH){
   expandedMorseBuffer[indexInExpandedMorseBuffer]=0;
  }
+ printf("END\n");
 }
 ////////////////////////////////////////////////////////////////////////////////
 //Arduino Serial////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
-#define SERIAL 1
+#define SERIAL 0
 #define SERIAL_BAUD 9600
 #define SERIAL_READY_DELAY 400
 #define SERIAL_INPUT_TIMEOUT 100
 #define SERIAL_WAIT_TIMEOUT 200
 static GioEndpoint *gioEndpoint = NULL;
-int serial_wait_time = 0;//TODO???
+int serial_wait_time = 1;//TODO???
 
 static void printByte(unsigned char byte)
 {
@@ -352,8 +366,6 @@ static void printByte(unsigned char byte)
     if(byte & brailleBits[6]) printf("1" ); else printf ("0" );
     if(byte & brailleBits[7]) printf("1\n"); else printf ("0\n");
 }
-
-
 
 int Serial_init(const char *identifier){
 //COPY PASTE from connectResource() in the Voyager driver...
@@ -374,8 +386,6 @@ int Serial_init(const char *identifier){
     return 0;
 }
 
-
-
 unsigned char Serial_read(){
     #if SERIAL
     while(!gioAwaitInput(gioEndpoint,0));
@@ -393,12 +403,12 @@ unsigned char Serial_read(){
 }
 
 void Serial_write(unsigned char byte){
-    //#if SERIAL
+    #if SERIAL
     gioWriteData(gioEndpoint, &byte, 1);
-    //#else
-    //printf(">>\n");
-    //printByte(byte);
-    //#endif
+    #else
+    printf(">>\n");
+    printByte(byte);
+    #endif
     //Write one byte to serial.
 }
 ////////////////////////////////////////////////////////////////////////////////
@@ -415,6 +425,7 @@ char in_waiting;
 unsigned char key;
 
 void run_event_loop(){
+ //printf("Loading event loop\n");
  Window rootwin;
  int scr;
  GC gc;//TODO, what is this value and why was it here?
@@ -444,8 +455,7 @@ void run_event_loop(){
    if(x!=new_x||y!=new_y){
     printf("x:%d y:%d,i:%d\n",e.xkey.x,e.xkey.y,new_x);
     if(x>0&&x<(EXPANDED_MORSE_BUFFER_LENGTH)){
-     Serial_write(expandedMorseBuffer[(x-1)+y*(EXPANDED_MORSE_BUFFER_LENGTH)]);
-     printByte(expandedMorseBuffer[(x-1)+y*(EXPANDED_MORSE_BUFFER_LENGTH)]);
+     Serial_write(expandedMorseBuffer[(x-1)]);
     }
     x=new_x;y=new_y;
    }
@@ -488,13 +498,17 @@ void run_event_loop(){
 static int
 brl_construct (BrailleDisplay *brl, char **parameters, const char *device) {
   //SERIAL
+  #if SERIAL
   Serial_init(device);
+  #endif
   //BRLTTY
   brl->textColumns=BUFFER_COLUMNS;
   brl->textRows=BUFFER_ROWS;
 
   //XLib thread
-  pthread_create(event_loop,NULL, &run_event_loop,NULL);
+  printf("Creating xlib thread.\n");
+  pthread_create(&event_loop,NULL, &run_event_loop,NULL);
+  printf("Everything loaded.\n");
   return 1;
 }
 
@@ -505,7 +519,17 @@ brl_destruct (BrailleDisplay *brl) {
 
 static int
 brl_writeWindow (BrailleDisplay *brl, const wchar_t *text) {
- loadMorseBuffer(brl->buffer,text);
+ //printf("Writing window\n");
+ if(!text){
+  printf("No text.\n");
+ }else{
+  //printf("Text found.\n");
+  //wprintf(L"%ls\n\n",text);
+  //wprintf(L"FOOOOOOO\n");
+  //printf("There is nothing inbetween here and \"writting window\"\n");
+  loadMorseBuffer(brl->buffer,text);
+  //printf("Window written\n");
+ }
  return 1;
 }
 

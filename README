@@ -1,32 +1,31 @@
-HOW TO BUILD AND RUN:
+CURRENT INSTRUCTIONS DO NOT WORK!!!!!!!!
+PLEASE WAIT FOR THEM TO BE UPDATED!!!
+!NOT WORKING!HOW TO BUILD AND RUN:
+!NOT WORKING!
+!NOT WORKING!Download and extract the latest FCHAD s!NOT WORKING!uported tar.gz file from:
 
-Download and extract the latest FCHAD suported tar.gz file from:
+!NOT WORKING!http://mielke.cc/brltty/download.html
 
-http://mielke.cc/brltty/download.html
+!NOT WORKING!The latest supported file is 4.3, I'm working on 4.4 support, just haven't gotten there yet.
 
-The latest supported file is 4.3, I'm working on 4.4 support, just haven't gotten there yet.
+!NOT WORKING!$ wget http://mielke.cc/brltty/releases/brltty-4.3.tar.gz
+!NOT WORKING!$ tar -xvvzf brltty-4.3.tar.gz
 
-$ wget http://mielke.cc/brltty/releases/brltty-4.3.tar.gz
-$ tar -xvvzf brltty-4.3.tar.gz
+!NOT WORKING!Cd to the Drivers directory of the brltty source:
 
-Cd to the Drivers directory of the brltty source:
+!NOT WORKING!$ cd brltty-4.3/Drivers/Braille/
 
-$ cd brltty-4.3/Drivers/Braille/
+!NOT WORKING!Git clone the FCHAD sources, and change to xlib-morse:
 
-Git clone the FCHAD sources, and change to xlib-morse:
+!NOT WORKING!$ git clone git://github.com/timthelion/FCHAD.git
+!NOT WORKING!$ cd FCHAD
+!NOT WORKING!$ git checkout xlib-morse
 
-$ git clone git://github.com/timthelion/FCHAD.git
-$ cd FCHAD
-$ git checkout xlib-morse
+!NOT WORKING!Configure: On Arch-linux:
+!NOT WORKING!Most of the build depends are listed here: http://www.archlinux.org/packages/extra/x86_64/brltty/
 
-Apply the changes described by config.mk.diff to config.mk in the top
-
-$ cd ../../../
-$  
-
-Configure: On Arch-linux:
-
-$ ./configure --prefix=/usr \
+!NOT WORKING!$ cd ../../../
+!NOT WORKING!$ ./configure --prefix=/usr \
   --sysconfdir=/etc \
   --mandir=/usr/share/man \
   --localstatedir=/var \
@@ -36,10 +35,18 @@ $ ./configure --prefix=/usr \
   --disable-caml-bindings \
   PYTHON=/usr/bin/python2
 
-Elsewhere:
+!NOT WORKING!Elsewhere:
 
-$ ./configure
+!NOT WORKING!$ cd ../../../
+!NOT WORKING!$ ./configure
 
+!NOT WORKING!Apply the changes described by config.mk.patch to config.mk in the top
+
+!NOT WORKING!$  
+
+To run:
+
+$ ./run-brltty -b fc -d /dev/ttyUSB0 -n -e
 
 WHAT is an FCHAD?
 An FCHAD is a Fast CHaricter braille Display.  That is, it's a braille display
