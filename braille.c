@@ -109,12 +109,12 @@ unsigned char Serial_read(){
 }
 
 void Serial_write(unsigned char byte){
-    //#if SERIAL
+    #if SERIAL
     gioWriteData(gioEndpoint, &byte, 1);
-    //#else
-    //printf(">>\n");
-    //printByte(byte);
-    //#endif
+    #else
+    printf(">>\n");
+    printByte(byte);
+    #endif
     //Write one byte to serial.
 }
 ////////////////////////////////////////////////////////////////////////////////
@@ -129,7 +129,9 @@ void Serial_write(unsigned char byte){
 static int
 brl_construct (BrailleDisplay *brl, char **parameters, const char *device) {
   //SERIAL
+  #if SERIAL
   Serial_init(device);
+  #endif
   //BRLTTY
   brl->textColumns=buffer_columns;
   brl->textRows=1;
