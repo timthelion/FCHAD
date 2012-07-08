@@ -47,7 +47,7 @@ static unsigned char *previousCells = NULL; /* previous pattern displayed */
 ////////////////////////////////////////////////////////////////////////////////
 //Arduino Serial////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
-#define SERIAL 1
+#define SERIAL 0
 #define SERIAL_BAUD 9600
 #define SERIAL_READY_DELAY 400
 #define SERIAL_INPUT_TIMEOUT 100
@@ -112,12 +112,12 @@ unsigned char Serial_read(){
 }
 
 void Serial_write(unsigned char byte){
-    //#if SERIAL
+    #if SERIAL
     gioWriteData(gioEndpoint, &byte, 1);
-    //#else
-    //printf(">>\n");
-    //printByte(byte);
-    //#endif
+    #else
+    printf(">>\n");
+    printByte(byte);
+    #endif
     //Write one byte to serial.
 }
 ////////////////////////////////////////////////////////////////////////////////
@@ -166,8 +166,7 @@ void run_event_loop(){
 	    {
 	        printf("x:%d y:%d,i:%d\n",e.xkey.x,e.xkey.y,new_x);
 	        if(x>0&&x<buffer_columns){
-	            Serial_write(previousCells[(x-1)+y*buffer_columns]);
-	            printByte(previousCells[(x-1)+y*buffer_columns]);
+	            Serial_write(previousCells[x-1]);
 	        }
 	        x=new_x;y=new_y;
 	    }
@@ -209,7 +208,9 @@ void run_event_loop(){
 static int
 brl_construct (BrailleDisplay *brl, char **parameters, const char *device) {
   //SERIAL
+  #if SERIAL
   Serial_init(device);
+  #endif
   //BRLTTY
   brl->textColumns=buffer_columns;
   brl->textRows=buffer_rows;
