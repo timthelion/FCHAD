@@ -454,10 +454,10 @@ void run_event_loop(){
    new_x=e.xkey.x/(1024/(EXPANDED_MORSE_BUFFER_LENGTH+1));//TODO get screen size!!!
    if(x!=new_x||y!=new_y){
     printf("x:%d y:%d,i:%d\n",e.xkey.x,e.xkey.y,new_x);
-    if(x>0&&x<(EXPANDED_MORSE_BUFFER_LENGTH)){
-     Serial_write(expandedMorseBuffer[(x-1)]);
-    }
     x=new_x;y=new_y;
+    if(x>0 && x<=EXPANDED_MORSE_BUFFER_LENGTH){
+     Serial_write(expandedMorseBuffer[x-1]);
+    }
    }
   }else if(e.type==ButtonPress){
   /*If the mouse button was pressed, we have a choice of 4 possible actions.
