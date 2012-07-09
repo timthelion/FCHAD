@@ -39,7 +39,7 @@
 //#define BRL_HAVE_KEY_CODES
 #include "brl_driver.h"
 
-#define BUFFER_COLUMNS 20
+#define BUFFER_COLUMNS 1
 #define BUFFER_ROWS 1
 
 /*
@@ -54,7 +54,7 @@ MAX_EXPANDED_LENGTH
 
 are all expressed in morse units.
 */
-#define MORSE_UNIT 30 
+#define MORSE_UNIT 17
 #define MORSE_SPACE_LENGTH 4
 #define MORSE_DIT_LENGTH 1
 #define MORSE_DAH_LENGTH 2
@@ -80,8 +80,8 @@ wchar_t morse[BRAILLE_MORSE_MAX_LENGTH];
 
 /*A chunk, is a string of textual morse code such as "..." which represents a single wchar_t. In the example case 's'. */
 #define MORSE_CHAR_CHUNK_SIZE BRAILLE_MORSE_MAX_LENGTH+1
-#define MORSE_BUFFER_LENGTH BUFFER_COLUMNS*MORSE_CHAR_CHUNK_SIZE
-#define EXPANDED_MORSE_BUFFER_LENGTH MORSE_BUFFER_LENGTH*MAX_EXPANDED_LENGTH
+#define MORSE_BUFFER_LENGTH (BUFFER_COLUMNS*MORSE_CHAR_CHUNK_SIZE)
+#define EXPANDED_MORSE_BUFFER_LENGTH (MORSE_BUFFER_LENGTH*MAX_EXPANDED_LENGTH)
 
 static unsigned char expandedMorseBuffer[EXPANDED_MORSE_BUFFER_LENGTH];
 
@@ -272,7 +272,7 @@ void loadMorseBuffer(unsigned char * braille,const wchar_t * text)
  int indexInBrlttyBuffer = 0;
  int indexInMorseBuffer = 0;
  wchar_t * currentChunk;
- int indexInCurrentChunk;//Used later in the loop, established now to save on memory allocation time.
+ int indexInCurrentChunk = 0;//Used later in the loop, established now to save on memory allocation time.
  while(indexInBrlttyBuffer<BUFFER_COLUMNS){
   /*
   We convert the braille-wchar_t character to morse code.
@@ -283,15 +283,17 @@ void loadMorseBuffer(unsigned char * braille,const wchar_t * text)
   Now we have to figure out how long our current chunk actually is.
   */
   indexInCurrentChunk=0;
-  while(indexInCurrentChunk<MORSE_CHAR_CHUNK_SIZE){
-   if(currentChunk[indexInCurrentChunk]=='0')break;
-   indexInCurrentChunk++;
+  while(indexInCurrentChunk<BRAILLE_MORSE_MAX_LENGTH){
+   if(currentChunk[indexInCurrentChunk++]=='0')break;
   }
   /*Now we copy our current chunk into our morseBuffer*/
-  memcpy(&morseBuffer[indexInMorseBuffer],currentChunk,(indexInCurrentChunk+1)*sizeof(wchar_t));
-  indexInMorseBuffer=indexInMorseBuffer+indexInCurrentChunk;
+  memcpy(&morseBuffer[indexInMorseBuffer],
+        currentChunk,
+	(indexInCurrentChunk)*sizeof(wchar_t));
+
+  indexInMorseBuffer+=indexInCurrentChunk;
   /*Add a space between the chars*/
-  morseBuffer[indexInMorseBuffer]=L'\0';
+  morseBuffer[++indexInMorseBuffer]=L'\0';
   indexInBrlttyBuffer++;
   //printf("Working %d/%d\n",indexInBrlttyBuffer,BUFFER_COLUMNS);
  }
@@ -299,7 +301,6 @@ void loadMorseBuffer(unsigned char * braille,const wchar_t * text)
  while(indexInMorseBuffer<MORSE_BUFFER_LENGTH){
   morseBuffer[indexInMorseBuffer++]=L' ';
  }
- printf("START\n");
  //printf("Converted to morse, expanding now.\n");
   /*Now we expand this buffer out from morse code (dits and dahs expressed by the characters '.','-','\0'[for spaces between characters] and ' '[spaces between words/normal spaces]) into FCHAD code to be sent directly to the device expressed by unsigned bytes 0 and 255.*/
  int indexInExpandedMorseBuffer=0;
@@ -307,6 +308,7 @@ void loadMorseBuffer(unsigned char * braille,const wchar_t * text)
  while(indexInMorseBuffer<MORSE_BUFFER_LENGTH)
  {
   //printf("Working %d/%d\n",indexInMorseBuffer,MORSE_BUFFER_LENGTH);
+  printf("indexInExpandedMorseBuffer is %d of max %d\n",indexInExpandedMorseBuffer, EXPANDED_MORSE_BUFFER_LENGTH);
   switch(morseBuffer[indexInMorseBuffer]){
    case L'\0':
     //printf("Matched \\0\n");
@@ -342,7 +344,7 @@ void loadMorseBuffer(unsigned char * braille,const wchar_t * text)
 ////////////////////////////////////////////////////////////////////////////////
 //Arduino Serial////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
-#define SERIAL 0
+#define SERIAL 1
 #define SERIAL_BAUD 9600
 #define SERIAL_READY_DELAY 400
 #define SERIAL_INPUT_TIMEOUT 100
@@ -438,8 +440,8 @@ void run_event_loop(){
  rootwin = RootWindow(dpy, scr);
     
  XGrabPointer(dpy, rootwin, True,
-                 ButtonPressMask |
-                 PointerMotionMask,
+               ButtonPressMask |
+               PointerMotionMask,
                GrabModeAsync,
                GrabModeAsync,None,
                None,
@@ -447,16 +449,26 @@ void run_event_loop(){
  XEvent e;
  int x,y,new_x,new_y=0;
  while(1) {
+  //printf("Waiting for an x event <<<\n");
   XNextEvent(dpy, &e);
+  //printf(">>>\n");
   if(e.type==MotionNotify){
   /*If the mouse moved, we update our x cordinate(our place in the buffer), then we send new information about what character is being displayed to our FCHAD device.*/
    new_y=0;
-   new_x=e.xkey.x/(1024/(EXPANDED_MORSE_BUFFER_LENGTH+1));//TODO get screen size!!!
+   new_x=e.xkey.x/MORSE_UNIT;
    if(x!=new_x||y!=new_y){
-    printf("x:%d y:%d,i:%d\n",e.xkey.x,e.xkey.y,new_x);
+    //printf("x:%d y:%d,i:%d\n",e.xkey.x,e.xkey.y,new_x);
     x=new_x;y=new_y;
-    if(x>0 && x<=EXPANDED_MORSE_BUFFER_LENGTH){
+    if(x==0){
+     key=SCROLL_LEFT;
+     in_waiting=1;
+    }else if(x > EXPANDED_MORSE_BUFFER_LENGTH){
+     key=SCROLL_RIGHT;
+     XWarpPointer(dpy,None,rootwin,0,0,0,0,MORSE_UNIT+1,100);
+     in_waiting=1;
+    }else{
      Serial_write(expandedMorseBuffer[x-1]);
+     printf("%d\n",expandedMorseBuffer[x-1]);
     }
    }
   }else if(e.type==ButtonPress){
@@ -469,6 +481,7 @@ void run_event_loop(){
     printf("Ungrab\n");
     XUngrabPointer(dpy, CurrentTime);
     XGrabButton(dpy, AnyButton,None, rootwin, False, ButtonPressMask, GrabModeAsync, GrabModeAsync, None, None);
+    printf("Waiting for an xlib event which would give us our grab back.\n");
     XNextEvent(dpy, &e);
     printf("Grab\n");
     XGrabPointer(dpy, rootwin, True,
@@ -479,13 +492,9 @@ void run_event_loop(){
             None,
             CurrentTime);
    }else if(x>0&&x<EXPANDED_MORSE_BUFFER_LENGTH){
-    key=(unsigned char)x;//TODO TODO, we shouldn't base this off x.  We need to create a NEW array which links cordinates in the expandedMorseBuffer to the cordinates of the brl->braillebuffer...
-   }else if(x==0){
-    key=SCROLL_LEFT;
-   }else if(x==(EXPANDED_MORSE_BUFFER_LENGTH+1)){
-    key=SCROLL_RIGHT;
+    key=0;
+    in_waiting=1;
    }
-   in_waiting=1;
   }else{
    printf("Other event\n");
   }
