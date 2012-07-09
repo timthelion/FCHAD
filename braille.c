@@ -232,7 +232,7 @@ static int writeWindow(BrailleDisplay *brl, const wchar_t *text){
 
 static int
 brl_writeWindow (BrailleDisplay *brl, const wchar_t *text) {
- if(cellsHaveChanged(previousCells, brl->buffer, buffer_columns, NULL, NULL))
+ if(cellsHaveChanged(previousCells, brl->buffer, buffer_columns, NULL, NULL,NULL))
  {   
         writeWindow(brl,text);
  }
