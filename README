@@ -1,5 +1,8 @@
 You may also checkout the other branches: fchad-xlib and fchad-morse
 
+This is the development version of the FCHAD driver for brltty.  To read more about FCHAD devices, scroll down.  To find the firmware for the arduino FCHAD see https://github.com/timthelion/FCHAD_firmware_arduino to see the diagrams for making the sheild to the arduino for building your own FCHAD device see https://github.com/timthelion/FCHAD_hardware
+
+
 To INSTALL:
 Download and extract the latest FCHAD suported tar.gz file from:
 
@@ -27,7 +30,7 @@ to configure.ac along with the other lines of the same heading.
 
 run autoconf
 
-$ ./autoconf
+$ autoconf
 
 run configure
 
@@ -39,14 +42,14 @@ Configure: On Arch-linux:
 Most of the build depends are listed here: http://www.archlinux.org/packages/extra/x86_64/brltty/
 
 $ cd ../../../
-$ CFLAGS=-pg ./configure --prefix=/usr \
+$ ./configure --prefix=/usr \
   --sysconfdir=/etc \
   --mandir=/usr/share/man \
   --localstatedir=/var \
   --with-screen-driver=a2 \
   --enable-gpm \
   --disable-java-bindings \
-  --disable-caml-bindings \
+  --disable-ocaml-bindings \
   PYTHON=/usr/bin/python2
 
 $ make
