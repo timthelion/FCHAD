@@ -131,6 +131,7 @@ void Serial_write(unsigned char byte){
 Display *dpy;
 pthread_t * event_loop;
 char in_waiting;
+char end_x_event_loop = 0;
 unsigned char key;
 
 void run_event_loop(){
@@ -157,7 +158,7 @@ void run_event_loop(){
                CurrentTime);
  	XEvent e;
  	int x,y,new_x,new_y;
-    while(1) {
+    while(!end_x_event_loop) {
     XNextEvent(dpy, &e);
 	if(e.type==MotionNotify){
 	    new_y=0;
@@ -167,7 +168,8 @@ void run_event_loop(){
 	        printf("x:%d y:%d,i:%d\n",e.xkey.x,e.xkey.y,new_x);
 	        if(x>0&&x<buffer_columns){
 	            Serial_write(previousCells[x-1]);
-	        }
+		    printByte(previousCells[x-1]);
+        }
 	        x=new_x;y=new_y;
 	    }
 	}else if(e.type==ButtonPress){
@@ -223,7 +225,8 @@ brl_construct (BrailleDisplay *brl, char **parameters, const char *device) {
 
 static void
 brl_destruct (BrailleDisplay *brl) {
-    XCloseDisplay(dpy);
+ end_x_event_loop=1;
+ XCloseDisplay(dpy);
 }
 
 static int writeWindow(BrailleDisplay *brl, const wchar_t *text){
@@ -232,7 +235,7 @@ static int writeWindow(BrailleDisplay *brl, const wchar_t *text){
 
 static int
 brl_writeWindow (BrailleDisplay *brl, const wchar_t *text) {
- if(cellsHaveChanged(previousCells, brl->buffer, buffer_columns, NULL, NULL,NULL))
+ if(cellsHaveChanged(previousCells, brl->buffer, buffer_columns, NULL, NULL))
  {   
         writeWindow(brl,text);
  }
